@@ -4,10 +4,15 @@ import type { WsMessage, NormalizedEvent } from '../types/events'
 const WS_URL = 'ws://localhost:3001'
 const MAX_BUFFER = 500
 
-export function useWebSocket(sessionId: string | null) {
+export function useWebSocket(sessionIds: string[]) {
   const [events, setEvents] = useState<NormalizedEvent[]>([])
   const [connected, setConnected] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
+  const sessionIdSetRef = useRef<Set<string>>(new Set(sessionIds))
+
+  useEffect(() => {
+    sessionIdSetRef.current = new Set(sessionIds)
+  }, [sessionIds])
 
   const connect = useCallback(() => {
     const ws = new WebSocket(WS_URL)
@@ -23,7 +28,8 @@ export function useWebSocket(sessionId: string | null) {
         const msg: WsMessage = JSON.parse(e.data as string)
         if (msg.type !== 'event') return
         const event = msg.payload
-        if (sessionId && event.sessionId !== sessionId) return
+        const ids = sessionIdSetRef.current
+        if (ids.size > 0 && !ids.has(event.sessionId)) return
 
         setEvents((prev) => {
           const next = [...prev, event]
@@ -33,7 +39,7 @@ export function useWebSocket(sessionId: string | null) {
         // malformed message — skip
       }
     }
-  }, [sessionId])
+  }, [])
 
   useEffect(() => {
     connect()
