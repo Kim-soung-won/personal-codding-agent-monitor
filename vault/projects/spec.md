@@ -4,7 +4,7 @@
 
 ---
 
-## 구현 현황 (2026-05-22)
+## 구현 현황 (2026-05-28)
 
 | 항목 | 상태 |
 |------|------|
@@ -17,13 +17,23 @@
 | 클라이언트 기반 (Vite + React + Tailwind + shadcn) | ✅ 완료 |
 | WebSocket 실시간 수신 + 자동 재연결 | ✅ 완료 |
 | 세션 선택 + 히스토리 로드 | ✅ 완료 |
-| ThinkingViewer | ✅ 완료 |
-| Context Timeline | ✅ 완료 |
-| Token Dashboard | ✅ 완료 |
+| ThinkingViewer (검색, 카테고리 필터, 접기/펼치기) | ✅ 완료 |
+| Context Timeline (hook/memory/tool/file-edit 시간순) | ✅ 완료 |
+| Token Dashboard (토큰 분포 바, 캐시 히트율) | ✅ 완료 |
+| 전체 피드 탭 (AllEventsFeed) | ✅ 완료 |
 | 프로젝트 → 세션 2단계 필터링 | ✅ 완료 |
-| 세션 비교 | 🔲 미구현 |
+| 프로젝트 전체 세션 집계 모드 (세션 미선택 시) | ✅ 완료 |
+| 세션 비교 | ✅ 완료 |
+| Tool 호출 빈도 통계 | ✅ 완료 |
+| 비용 추정 | ✅ 완료 |
+| 가상 스크롤 (Virtual scroll) | 🔲 미구현 |
+| 이전 세션 요약 (hook stdout 파싱) | ✅ 완료 |
+| tool_use diff 뷰 (Edit/Write) | ✅ 완료 |
+| metrics/costs.jsonl 연동 | ✅ 완료 |
 
-> 상세 개발 기록: [`vault/notes/dev-log-2026-05-22.md`](../notes/dev-log-2026-05-22.md)
+> 상세 개발 기록:
+> - [`vault/notes/dev-log-2026-05-22.md`](../notes/dev-log-2026-05-22.md)
+> - [`vault/notes/dev-log-2026-05-28.md`](../notes/dev-log-2026-05-28.md)
 
 ---
 
@@ -286,14 +296,23 @@ Claude Code Observer는 이 파일을 실시간으로 파싱·시각화해 다�
 - Session 드롭다운은 Project 선택 전 비활성 (`disabled`)
 - Project 변경 시 Session 선택 및 이벤트 버퍼 초기화
 
+#### UX 결정: 프로젝트 전체 세션 집계 모드 (2026-05-28)
+
+세션을 특정하지 않고 프로젝트만 선택하면, 해당 프로젝트의 모든 세션 이벤트를 타임스탬프 기준으로 병합해 표시.
+- `activeSessionIds` = 프로젝트 내 전체 세션 ID 배열
+- REST API를 병렬 호출(Promise.all) → 병합 후 최신 500개 유지
+- 헤더에 이벤트 수 + 세션 수 표시 (`N개 / M개 세션`)
+
 ### SHOULD (중요)
-- **Token Dashboard**: input/output/cache_create/cache_read 실시간 누계, 캐시 히트율 시각화
-- **세션 비교**: 두 세션 나란히 비교
+- **세션 비교**: 두 세션을 나란히 배치. 각 패널이 독립적인 이벤트 스트림을 보여줌. 같은 프로젝트 내 세션 선택 UI 필요.
+- **Tool 호출 빈도 통계**: `tool-use` 이벤트에서 tool name별 호출 횟수 집계. 막대 차트 또는 테이블로 표시. Token Dashboard에 탭으로 통합하거나 별도 뷰 추가.
+- **비용 추정**: Sonnet 4.6 기준 단가 적용 (input $3/M, output $15/M, cache write $3.75/M, cache read $0.30/M). Token Dashboard에 예상 비용 카드 추가.
 
 ### COULD (여유 시)
-- 이전 세션 요약 (hook_success.stdout 파싱)
-- nested_memory 주입 내용 인라인 표시
-- tool_use input/output diff 뷰
+- **가상 스크롤 (Virtual scroll)**: 이벤트가 500개에 근접하면 렌더링 성능 저하 우려. `@tanstack/react-virtual` 도입 검토. ThinkingViewer, AllEventsFeed 우선 적용.
+- **이전 세션 요약**: `hook_success` 이벤트의 `stdout` → `hookSpecificOutput.additionalContext` 파싱. ThinkingViewer 또는 Timeline에 별도 카드로 표시.
+- **nested_memory 인라인 표시**: Timeline에서 `nested_memory` 이벤트 클릭 시 해당 rule 파일 내용 전문 표시.
+- **tool_use diff 뷰**: Edit 툴 호출 시 `old_string` / `new_string` 을 diff 형식으로 렌더링.
 
 ---
 

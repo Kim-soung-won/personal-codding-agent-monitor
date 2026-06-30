@@ -37,7 +37,7 @@ export function Timeline({ events }: Props) {
     <div className="relative pl-7">
       <div className="absolute left-3 top-2 bottom-2 w-px bg-border" />
       <div className="space-y-2">
-        {filtered.map((ev) => (
+        {filtered.slice().reverse().map((ev) => (
           <div key={ev.id} className="relative flex gap-3">
             <div
               className={cn(

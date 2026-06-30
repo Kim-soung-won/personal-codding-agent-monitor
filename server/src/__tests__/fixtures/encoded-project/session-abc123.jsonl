@@ -1,0 +1,2 @@
+{"type":"user","uuid":"u1","timestamp":"2024-01-01T00:00:00Z","sessionId":"session-abc123","message":{"role":"user","content":[{"type":"text","text":"hello"}]}}
+{"type":"assistant","uuid":"a1","timestamp":"2024-01-01T00:00:01Z","sessionId":"session-abc123","message":{"role":"assistant","content":[{"type":"thinking","thinking":"생각 중"}],"usage":{"input_tokens":10,"output_tokens":5}}}

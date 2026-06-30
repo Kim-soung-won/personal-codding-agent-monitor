@@ -1,9 +1,5 @@
 # CLAUDE.md — Claude Code Observer
 
-> 새 세션을 시작할 때마다 이 문서를 먼저 읽어라.
-
----
-
 ## 이 프로젝트가 무엇인가
 
 `~/.claude/projects/**/*.jsonl` 을 실시간으로 파싱해, Claude Code 세션의 thinking / tool_use / context injection 을 시각화하는 **개인용 모니터링 대시보드**.

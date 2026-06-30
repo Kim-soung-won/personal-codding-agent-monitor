@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { SessionInfo } from '../types.js'
 
-const CLAUDE_PROJECTS = join(homedir(), '.claude', 'projects')
+const DEFAULT_PROJECTS = join(homedir(), '.claude', 'projects')
 
 async function resolveSegments(base: string, parts: string[], idx: number): Promise<string> {
   if (idx >= parts.length) return base
@@ -40,19 +40,20 @@ export async function resolveProjectPath(encoded: string): Promise<string> {
   return resolveSegments('/', parts, 0)
 }
 
-export async function scanSessions(): Promise<SessionInfo[]> {
+export async function scanSessions(baseDir?: string): Promise<SessionInfo[]> {
+  const projectsDir = baseDir ?? DEFAULT_PROJECTS
   const sessions: SessionInfo[] = []
 
   let projectDirs: string[]
   try {
-    projectDirs = await readdir(CLAUDE_PROJECTS)
+    projectDirs = await readdir(projectsDir)
   } catch {
     return sessions
   }
 
   await Promise.all(
     projectDirs.map(async (encoded) => {
-      const projectDir = join(CLAUDE_PROJECTS, encoded)
+      const projectDir = join(projectsDir, encoded)
       try {
         const s = await stat(projectDir)
         if (!s.isDirectory()) return

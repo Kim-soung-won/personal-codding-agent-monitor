@@ -24,3 +24,12 @@ export interface SessionInfo {
   filePath: string
   lastModified: number
 }
+
+export interface CostEntry {
+  timestamp: string
+  session_id: string
+  model: string
+  input_tokens: number
+  output_tokens: number
+  estimated_cost_usd: number
+}

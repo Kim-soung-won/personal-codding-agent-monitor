@@ -35,3 +35,12 @@ export interface ApiResponse<T> {
   data?: T
   error?: string
 }
+
+export interface CostEntry {
+  timestamp: string
+  session_id: string
+  model: string
+  input_tokens: number
+  output_tokens: number
+  estimated_cost_usd: number
+}
