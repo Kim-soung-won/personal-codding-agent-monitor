@@ -40,6 +40,23 @@ export async function resolveProjectPath(encoded: string): Promise<string> {
   return resolveSegments('/', parts, 0)
 }
 
+/**
+ * {projectDir}/{session-uuid}/subagents/*.jsonl 을 찾는다.
+ *
+ * 서브에이전트 파일은 프로젝트 디렉토리 최상위가 아니라 세션 UUID 이름의
+ * 하위 디렉토리에 있어 최상위 readdir 로는 잡히지 않는다.
+ */
+async function findSubagentFiles(projectDir: string, sessionId: string): Promise<string[]> {
+  const subagentDir = join(projectDir, sessionId, 'subagents')
+  try {
+    const entries = await readdir(subagentDir)
+    return entries.filter((f) => f.endsWith('.jsonl')).map((f) => join(subagentDir, f))
+  } catch {
+    // 서브에이전트 디렉토리 없음 — 정상 케이스
+    return []
+  }
+}
+
 export async function scanSessions(baseDir?: string): Promise<SessionInfo[]> {
   const projectsDir = baseDir ?? DEFAULT_PROJECTS
   const sessions: SessionInfo[] = []
@@ -68,6 +85,7 @@ export async function scanSessions(baseDir?: string): Promise<SessionInfo[]> {
             .filter((f) => f.endsWith('.jsonl'))
             .map(async (file) => {
               const filePath = join(projectDir, file)
+              const sessionId = file.replace('.jsonl', '')
               let lastModified = 0
               try {
                 const fs = await stat(filePath)
@@ -78,9 +96,10 @@ export async function scanSessions(baseDir?: string): Promise<SessionInfo[]> {
               sessions.push({
                 projectPath,
                 projectEncoded: encoded,
-                sessionId: file.replace('.jsonl', ''),
+                sessionId,
                 filePath,
                 lastModified,
+                subagentFilePaths: await findSubagentFiles(projectDir, sessionId),
               })
             }),
         )

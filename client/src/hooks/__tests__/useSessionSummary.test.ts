@@ -9,6 +9,7 @@ function makeHookSuccessEvent(hookName: string, stdout: unknown): NormalizedEven
     sessionId: 'session-1',
     timestamp: '2024-01-01T00:00:00Z',
     category: 'context-injection',
+    origin: 'main',
     summary: `hook: ${hookName}`,
     raw: {
       type: 'attachment',

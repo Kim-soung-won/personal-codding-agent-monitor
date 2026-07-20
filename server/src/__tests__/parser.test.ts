@@ -3,6 +3,29 @@ import { JsonlEventParser } from '../parser/index.js'
 
 const parser = new JsonlEventParser()
 
+describe('JsonlEventParser origin', () => {
+  const parser = new JsonlEventParser()
+  const line = JSON.stringify({
+    type: 'assistant',
+    uuid: 'u1',
+    agentId: 'agent-abc',
+    timestamp: '2026-07-20T00:00:00.000Z',
+    message: { model: 'claude-opus-4-8', content: [{ type: 'text', text: 'hi' }] },
+  })
+
+  it('origin 생략 시 main이 기본값 (하위호환)', () => {
+    const event = parser.parse(line, 'session-1')
+    expect(event?.origin).toBe('main')
+    expect(event?.agentId).toBeUndefined()
+  })
+
+  it('subagent origin이면 agentId를 채운다', () => {
+    const event = parser.parse(line, 'session-1', 'subagent')
+    expect(event?.origin).toBe('subagent')
+    expect(event?.agentId).toBe('agent-abc')
+  })
+})
+
 describe('JsonlEventParser', () => {
   it('빈 라인은 null 반환', () => {
     expect(parser.parse('', 'session-1')).toBeNull()

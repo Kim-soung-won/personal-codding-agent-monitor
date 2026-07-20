@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import chokidar from 'chokidar'
 import { JsonlEventParser } from '../parser/index.js'
-import type { NormalizedEvent } from '../types.js'
+import type { EventOrigin, NormalizedEvent } from '../types.js'
 
 const CLAUDE_PROJECTS = join(homedir(), '.claude', 'projects')
 const MAX_BUFFER = 500
@@ -12,8 +12,27 @@ const parser = new JsonlEventParser()
 const eventBuffer: NormalizedEvent[] = []
 const fileSizeCache = new Map<string, number>()
 
-function sessionIdFromPath(filePath: string): string {
-  return filePath.split('/').pop()?.replace('.jsonl', '') ?? filePath
+/**
+ * 파일 경로에서 소속 세션과 origin을 판정한다.
+ *
+ * 서브에이전트 파일은 {session-uuid}/subagents/agent-{id}.jsonl 이므로
+ * 파일명(agent-{id})이 아니라 상위 디렉토리의 세션 UUID를 sessionId로 써야
+ * 클라이언트가 부모 세션에 매칭할 수 있다.
+ */
+function resolveOriginAndSessionId(filePath: string): {
+  sessionId: string
+  origin: EventOrigin
+} {
+  const parts = filePath.split('/')
+  const fileName = parts.pop() ?? filePath
+  const parentDir = parts.pop()
+
+  if (parentDir === 'subagents') {
+    const sessionDir = parts.pop()
+    if (sessionDir) return { sessionId: sessionDir, origin: 'subagent' }
+  }
+
+  return { sessionId: fileName.replace('.jsonl', ''), origin: 'main' }
 }
 
 async function tailFile(filePath: string, broadcast: (data: unknown) => void): Promise<void> {
@@ -31,9 +50,9 @@ async function tailFile(filePath: string, broadcast: (data: unknown) => void): P
     await fh.read(buffer, 0, byteCount, prevSize)
     fileSizeCache.set(filePath, currentSize)
 
-    const sessionId = sessionIdFromPath(filePath)
+    const { sessionId, origin } = resolveOriginAndSessionId(filePath)
     for (const line of buffer.toString('utf8').split('\n')) {
-      const event = parser.parse(line, sessionId)
+      const event = parser.parse(line, sessionId, origin)
       if (!event || event.category === 'unknown') continue
 
       eventBuffer.push(event)

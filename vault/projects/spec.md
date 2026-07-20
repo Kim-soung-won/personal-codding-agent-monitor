@@ -25,15 +25,17 @@
 | 프로젝트 전체 세션 집계 모드 (세션 미선택 시) | ✅ 완료 |
 | 세션 비교 | ✅ 완료 |
 | Tool 호출 빈도 통계 | ✅ 완료 |
-| 비용 추정 | ✅ 완료 |
+| 비용 추정 (모델별 단가 + 서브에이전트 포함) | ✅ 완료 |
 | 가상 스크롤 (Virtual scroll) | 🔲 미구현 |
 | 이전 세션 요약 (hook stdout 파싱) | ✅ 완료 |
 | tool_use diff 뷰 (Edit/Write) | ✅ 완료 |
-| metrics/costs.jsonl 연동 | ✅ 완료 |
+| metrics/costs.jsonl 연동 | ❌ 제거 (2026-07-20 — 데이터가 전부 무의미해 죽은 경로였음) |
 
 > 상세 개발 기록:
 > - [`vault/notes/dev-log-2026-05-22.md`](../notes/dev-log-2026-05-22.md)
 > - [`vault/notes/dev-log-2026-05-28.md`](../notes/dev-log-2026-05-28.md)
+> - [`vault/notes/dev-log-2026-06-04.md`](../notes/dev-log-2026-06-04.md)
+> - [`vault/notes/dev-log-2026-07-20.md`](../notes/dev-log-2026-07-20.md)
 
 ---
 

@@ -1,12 +1,21 @@
 import { useMemo } from 'react'
 import { cn } from '../lib/utils'
-import type { NormalizedEvent } from '../types/events'
+import { calcCostUsd, readUsage } from '@shared/pricing'
+import { calcSessionQuality } from '../lib/sessionQuality'
+import { SessionQualityCard } from './SessionQualityCard'
+import type { EventOrigin, NormalizedEvent } from '../types/events'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface PerCallUsage {
   ctxSize: number   // in + cw + cr  (total context window for this call)
   output: number
+  input: number
+  cacheCreate: number
+  cacheRead: number
+  model: string | undefined
+  origin: EventOrigin
+  agentId: string | undefined
 }
 
 interface Stats {
@@ -20,36 +29,47 @@ interface Stats {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const INPUT_PER_M      = 3.00
-const OUTPUT_PER_M     = 15.00
-const CACHE_WRITE_PER_M = 3.75
-const CACHE_READ_PER_M  = 0.30
-
+/**
+ * 요청(requestId) 단위로 집계한다.
+ *
+ * 한 API 응답이 content block별로 여러 JSONL 라인에 쪼개져 기록되고 각 라인이
+ * 같은 usage를 반복해 갖는다. 라인 단위로 세면 토큰이 배로 부풀려지므로
+ * 요청당 최종 라인(output_tokens 최대) 하나만 남긴다.
+ */
 function calcStats(events: NormalizedEvent[]): Stats {
-  let input = 0, output = 0, cacheCreate = 0, cacheRead = 0
-  const perCall: PerCallUsage[] = []
+  const byRequest = new Map<string, PerCallUsage>()
+  let fallbackKey = 0
 
   for (const ev of events) {
-    const raw = ev.raw as Record<string, unknown>
-    if (raw.type !== 'assistant') continue
-    const msg = raw.message as { usage?: Record<string, number> } | undefined
-    const u = msg?.usage
-    if (!u) continue
+    const entry = readUsage(ev.raw)
+    if (!entry) continue
 
-    const i  = u.input_tokens                 ?? 0
-    const o  = u.output_tokens                ?? 0
-    const cw = u.cache_creation_input_tokens  ?? 0
-    const cr = u.cache_read_input_tokens      ?? 0
+    const { inputTokens: i, outputTokens: o, cacheWrite: cw, cacheRead: cr } = entry.usage
+    const call: PerCallUsage = {
+      ctxSize: i + cw + cr,
+      output: o,
+      input: i,
+      cacheCreate: cw,
+      cacheRead: cr,
+      model: entry.model,
+      origin: ev.origin ?? 'main',
+      agentId: ev.agentId,
+    }
 
-    input       += i
-    output      += o
-    cacheCreate += cw
-    cacheRead   += cr
-
-    perCall.push({ ctxSize: i + cw + cr, output: o })
+    const key = entry.requestId ?? `__no-request-${fallbackKey++}`
+    const prev = byRequest.get(key)
+    if (!prev || call.output > prev.output) byRequest.set(key, call)
   }
 
-  return { input, output, cacheCreate, cacheRead, turnCount: perCall.length, perCall }
+  const perCall = [...byRequest.values()]
+  return {
+    input: perCall.reduce((s, c) => s + c.input, 0),
+    output: perCall.reduce((s, c) => s + c.output, 0),
+    cacheCreate: perCall.reduce((s, c) => s + c.cacheCreate, 0),
+    cacheRead: perCall.reduce((s, c) => s + c.cacheRead, 0),
+    turnCount: perCall.length,
+    perCall,
+  }
 }
 
 function fmt(n: number): string {
@@ -134,8 +154,40 @@ interface Props {
   events: NormalizedEvent[]
 }
 
+function costOf(calls: PerCallUsage[]): number {
+  return calls.reduce(
+    (sum, c) =>
+      sum +
+      calcCostUsd(
+        {
+          inputTokens: c.input,
+          outputTokens: c.output,
+          cacheWrite: c.cacheCreate,
+          cacheRead: c.cacheRead,
+        },
+        c.model,
+      ),
+    0,
+  )
+}
+
 export function TokenDashboard({ events }: Props) {
   const s = useMemo(() => calcStats(events), [events])
+  const quality = useMemo(() => calcSessionQuality(events), [events])
+
+  // 서브에이전트 분리 — 부모 세션 집계에 합산되지만 기여분을 따로 보여준다
+  const origin = useMemo(() => {
+    const main = s.perCall.filter((c) => c.origin === 'main')
+    const sub = s.perCall.filter((c) => c.origin === 'subagent')
+    const agentIds = new Set(sub.map((c) => c.agentId).filter(Boolean))
+    return {
+      main,
+      sub,
+      agentCount: agentIds.size,
+      mainCost: costOf(main),
+      subCost: costOf(sub),
+    }
+  }, [s.perCall])
 
   if (s.turnCount === 0) {
     return (
@@ -153,16 +205,24 @@ export function TokenDashboard({ events }: Props) {
     ? (s.cacheRead / (s.input + s.cacheCreate + s.cacheRead)) * 100
     : 0
 
-  // Cost: actual vs hypothetical without cache
-  const actualCost =
-    (s.input      * INPUT_PER_M +
-     s.output     * OUTPUT_PER_M +
-     s.cacheCreate * CACHE_WRITE_PER_M +
-     s.cacheRead   * CACHE_READ_PER_M) / 1_000_000
+  // Cost: actual vs hypothetical without cache — 호출별 모델 단가로 합산
+  const actualCost = costOf(s.perCall)
 
-  const noCacheCost =
-    ((s.input + s.cacheCreate + s.cacheRead) * INPUT_PER_M +
-      s.output * OUTPUT_PER_M) / 1_000_000
+  // 캐시가 없었다면 캐시 토큰이 전부 일반 input 으로 청구됐을 것
+  const noCacheCost = s.perCall.reduce(
+    (sum, c) =>
+      sum +
+      calcCostUsd(
+        {
+          inputTokens: c.input + c.cacheCreate + c.cacheRead,
+          outputTokens: c.output,
+          cacheWrite: 0,
+          cacheRead: 0,
+        },
+        c.model,
+      ),
+    0,
+  )
 
   const savings = noCacheCost - actualCost
 
@@ -173,6 +233,59 @@ export function TokenDashboard({ events }: Props) {
 
   return (
     <div className="space-y-8 max-w-2xl">
+
+      {/* ── Section 0: 세션 품질 (낭비 신호) ───────────────────────────── */}
+      <SessionQualityCard quality={quality} cacheHitRate={cacheHitRate / 100} />
+
+      {/* ── Section 0-1: 메인 vs 서브에이전트 ──────────────────────────── */}
+      {origin.sub.length > 0 && (
+        <section>
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">
+            메인 · 서브에이전트 분리
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg border bg-card px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                메인 세션
+              </p>
+              <p className="text-2xl font-mono font-bold mt-1">{fmtUsd(origin.mainCost)}</p>
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                API 요청 {origin.main.length}회
+              </p>
+            </div>
+            <div className="rounded-lg border bg-card px-4 py-3 border-violet-500/40">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-500">
+                서브에이전트
+              </p>
+              <p className="text-2xl font-mono font-bold text-violet-500 mt-1">
+                {fmtUsd(origin.subCost)}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                API 요청 {origin.sub.length}회 · 에이전트 {origin.agentCount}개
+              </p>
+            </div>
+          </div>
+
+          {/* 비중 바 */}
+          <div className="mt-2 h-2 rounded-full overflow-hidden bg-muted flex">
+            <div
+              className="bg-foreground/40"
+              style={{ width: `${(origin.mainCost / Math.max(actualCost, 1e-9)) * 100}%` }}
+            />
+            <div
+              className="bg-violet-500"
+              style={{ width: `${(origin.subCost / Math.max(actualCost, 1e-9)) * 100}%` }}
+            />
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-2 px-1">
+            서브에이전트가 전체 비용의{' '}
+            <span className="font-mono font-semibold text-violet-500">
+              {((origin.subCost / Math.max(actualCost, 1e-9)) * 100).toFixed(1)}%
+            </span>
+            를 차지합니다. 아래 토큰 통계에는 이미 합산되어 있습니다.
+          </p>
+        </section>
+      )}
 
       {/* ── Section 1: 실제 생성/처리 ───────────────────────────────────── */}
       <section>

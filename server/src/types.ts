@@ -8,6 +8,9 @@ export type EventCategory =
   | 'system'
   | 'unknown'
 
+/** 이벤트가 메인 세션 파일에서 왔는지, 서브에이전트 파일에서 왔는지 */
+export type EventOrigin = 'main' | 'subagent'
+
 export interface NormalizedEvent {
   id: string
   sessionId: string
@@ -15,6 +18,8 @@ export interface NormalizedEvent {
   category: EventCategory
   raw: unknown
   summary: string
+  origin: EventOrigin
+  agentId?: string
 }
 
 export interface SessionInfo {
@@ -23,13 +28,6 @@ export interface SessionInfo {
   sessionId: string
   filePath: string
   lastModified: number
-}
-
-export interface CostEntry {
-  timestamp: string
-  session_id: string
-  model: string
-  input_tokens: number
-  output_tokens: number
-  estimated_cost_usd: number
+  /** {session-uuid}/subagents/*.jsonl 절대경로. 없으면 빈 배열 */
+  subagentFilePaths: string[]
 }

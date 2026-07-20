@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import type { EventCategory, NormalizedEvent } from '../types.js'
+import type { EventCategory, EventOrigin, NormalizedEvent } from '../types.js'
 
 export interface IEventParser {
-  parse(line: string, sessionId: string): NormalizedEvent | null
+  parse(line: string, sessionId: string, origin?: EventOrigin): NormalizedEvent | null
 }
 
 export class JsonlEventParser implements IEventParser {
-  parse(line: string, sessionId: string): NormalizedEvent | null {
+  parse(line: string, sessionId: string, origin: EventOrigin = 'main'): NormalizedEvent | null {
     const trimmed = line.trim()
     if (!trimmed) return null
 
@@ -27,6 +27,10 @@ export class JsonlEventParser implements IEventParser {
       category: categorize(event),
       raw,
       summary: summarize(event),
+      origin,
+      ...(origin === 'subagent' && typeof event.agentId === 'string'
+        ? { agentId: event.agentId }
+        : {}),
     }
   }
 }

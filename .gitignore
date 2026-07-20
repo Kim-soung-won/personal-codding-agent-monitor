@@ -7,10 +7,17 @@ client/node_modules/
 server/dist/
 client/dist/
 
-# env
+# env / credentials
 .env
 .env.local
 .env.*.local
+# npm 레지스트리 인증 토큰 포함 — 커밋 금지
+.npmrc
+**/.npmrc
+
+# Claude Code 로컬 설정 (머신별 권한 허용 목록)
+.claude/settings.local.json
+.claude/settings.local.json.tmp.*
 
 # logs
 *.log

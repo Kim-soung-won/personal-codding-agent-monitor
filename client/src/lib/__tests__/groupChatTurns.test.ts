@@ -16,6 +16,7 @@ function makeEvent(
     category,
     summary: '',
     raw,
+    origin: 'main',
     ...overrides,
   }
 }

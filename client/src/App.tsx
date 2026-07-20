@@ -1,25 +1,36 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useTheme } from './hooks/useTheme'
 import { ChatView } from './components/ChatView'
 import { ThinkingViewer } from './components/ThinkingViewer'
 import { TokenDashboard } from './components/TokenDashboard'
-import { ToolStats } from './components/ToolStats'
+import { ResourcesPanel } from './components/ResourcesPanel'
 import { WelcomeDashboard } from './components/WelcomeDashboard'
+import { GlobalAnalytics } from './components/GlobalAnalytics'
 import { cn } from './lib/utils'
+import { calcCostUsd, collectUsage } from '@shared/pricing'
 import type { NormalizedEvent, SessionInfo } from './types/events'
 
 const API_BASE = 'http://localhost:3001'
 
-type Tab = 'chat' | 'thinking' | 'tokens' | 'tool-stats'
-const VALID_TABS = new Set<string>(['chat', 'thinking', 'tokens', 'tool-stats'])
+type SessionTab = 'chat' | 'thinking' | 'tokens' | 'resources'
+type ProjectTab = 'thinking' | 'tokens' | 'resources'
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'chat',       label: '대화' },
-  { id: 'thinking',   label: 'Thinking' },
-  { id: 'tokens',     label: 'Tokens' },
-  { id: 'tool-stats', label: 'Tools' },
+const VALID_SESSION_TABS = new Set<string>(['chat', 'thinking', 'tokens', 'resources'])
+const VALID_PROJECT_TABS = new Set<string>(['thinking', 'tokens', 'resources'])
+
+const SESSION_TABS: { id: SessionTab; label: string }[] = [
+  { id: 'chat',      label: '대화' },
+  { id: 'thinking',  label: 'Thinking' },
+  { id: 'tokens',    label: 'Tokens' },
+  { id: 'resources', label: 'Resources' },
+]
+
+const PROJECT_TABS: { id: ProjectTab; label: string }[] = [
+  { id: 'thinking',  label: 'Thinking' },
+  { id: 'tokens',    label: 'Tokens' },
+  { id: 'resources', label: 'Resources' },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -46,6 +57,14 @@ function formatCost(usd: number): string {
   return `$${usd.toFixed(2)}`
 }
 
+async function fetchSessionEvents(sessionId: string): Promise<NormalizedEvent[]> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/events`)
+  const json = await res.json()
+  if (!json.success) return []
+  return (json.data as NormalizedEvent[])
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+}
+
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 interface SidebarProps {
@@ -55,13 +74,14 @@ interface SidebarProps {
 
 function Sidebar({ sessions, connected }: SidebarProps) {
   const navigate = useNavigate()
-  const { sessionId: activeSessionId } = useParams<{ sessionId?: string }>()
+  const location = useLocation()
 
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
-  const [sessionCosts, setSessionCosts] = useState<Record<string, number>>({})
-  const fetchingRef = useRef<Set<string>>(new Set())
+  const projectMatch = location.pathname.match(/^\/p\/([^/]+)/)
+  const activeProjectEncoded = projectMatch?.[1]
+  const sessionMatch = location.pathname.match(/^\/s\/([^/]+)/)
+  const activeSessionId = sessionMatch?.[1]
 
-  // Group sessions by project (most recent first)
+  // Deduplicated project list, most recent first
   const projects = (() => {
     const seen = new Map<string, SessionInfo>()
     for (const s of sessions) {
@@ -70,65 +90,16 @@ function Sidebar({ sessions, connected }: SidebarProps) {
     return [...seen.values()].sort((a, b) => b.lastModified - a.lastModified)
   })()
 
-  // Auto-expand the project of the active session
-  useEffect(() => {
-    if (!activeSessionId) return
-    const session = sessions.find(s => s.sessionId === activeSessionId)
-    if (session) {
-      setExpandedProjects(prev => new Set([...prev, session.projectEncoded]))
-    }
-  }, [activeSessionId, sessions])
-
-  const fetchCosts = useCallback((sessionIds: string[]) => {
-    const toFetch = sessionIds.filter(
-      id => !(id in sessionCosts) && !fetchingRef.current.has(id),
-    )
-    if (toFetch.length === 0) return
-    for (const id of toFetch) fetchingRef.current.add(id)
-
-    Promise.all(
-      toFetch.map(id =>
-        fetch(`${API_BASE}/api/sessions/${id}/cost`)
-          .then(r => r.json())
-          .then(res => [id, res.success ? (res.data.estimatedCostUsd as number) : null] as const)
-          .catch(() => [id, null] as const),
-      ),
-    ).then(entries => {
-      const valid = entries.filter((e): e is [string, number] => e[1] !== null)
-      if (valid.length > 0) {
-        setSessionCosts(prev => ({ ...prev, ...Object.fromEntries(valid) }))
-      }
-      for (const [id] of entries) fetchingRef.current.delete(id)
-    })
-  }, [sessionCosts])
-
-  const toggleProject = (encoded: string) => {
-    const willExpand = !expandedProjects.has(encoded)
-    setExpandedProjects(prev => {
-      const next = new Set(prev)
-      next.has(encoded) ? next.delete(encoded) : next.add(encoded)
-      return next
-    })
-    if (willExpand) {
-      const ids = sessions.filter(s => s.projectEncoded === encoded).map(s => s.sessionId)
-      fetchCosts(ids)
-    }
-  }
-
-  const projectSessions = (encoded: string) =>
-    sessions.filter(s => s.projectEncoded === encoded)
-      .sort((a, b) => b.lastModified - a.lastModified)
-
   return (
     <aside
-      className="w-60 shrink-0 flex flex-col h-full overflow-hidden"
+      className="w-56 shrink-0 flex flex-col h-full overflow-hidden"
       style={{
         background: 'hsl(var(--sidebar))',
         borderRight: '1px solid hsl(var(--sidebar-border))',
         color: 'hsl(var(--sidebar-foreground))',
       }}
     >
-      {/* Logo — 클릭 시 홈으로 */}
+      {/* Logo */}
       <button
         onClick={() => navigate('/')}
         className="px-4 py-4 flex items-center gap-2.5 shrink-0 hover:bg-muted/30 transition-colors text-left w-full"
@@ -148,63 +119,55 @@ function Sidebar({ sessions, connected }: SidebarProps) {
 
       <div className="mx-3 mb-2 shrink-0" style={{ height: '1px', background: 'hsl(var(--sidebar-border))' }} />
 
-      {/* Session tree */}
-      <div className="flex-1 overflow-y-auto px-2 pb-4">
+      {/* Analytics */}
+      <div className="px-2 mb-1 shrink-0">
+        <button
+          onClick={() => navigate('/analytics')}
+          className={cn(
+            'w-full flex items-center gap-2 px-3 py-2 rounded text-left text-xs font-medium transition-colors',
+            location.pathname === '/analytics'
+              ? 'bg-primary/10 text-primary'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+          )}
+        >
+          <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          Analytics
+        </button>
+      </div>
+
+      <div className="mx-3 mb-2 shrink-0" style={{ height: '1px', background: 'hsl(var(--sidebar-border))' }} />
+
+      {/* Flat project list */}
+      <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5">
         {projects.length === 0 && (
           <p className="text-xs text-muted-foreground px-2 py-4 text-center">세션 없음</p>
         )}
         {projects.map(p => {
-          const isExpanded = expandedProjects.has(p.projectEncoded)
-          const pSessions = projectSessions(p.projectEncoded)
-          const hasActive = pSessions.some(s => s.sessionId === activeSessionId)
+          const pCount = sessions.filter(s => s.projectEncoded === p.projectEncoded).length
+          const isActive = p.projectEncoded === activeProjectEncoded
+            || sessions.some(s => s.sessionId === activeSessionId && s.projectEncoded === p.projectEncoded)
 
           return (
-            <div key={p.projectEncoded} className="mb-0.5">
-              <button
-                onClick={() => toggleProject(p.projectEncoded)}
-                className={cn(
-                  'w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors',
-                  hasActive ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50 text-foreground',
-                )}
-              >
-                <span className="text-[10px] text-muted-foreground w-3 shrink-0">
-                  {isExpanded ? '▼' : '▶'}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-xs font-medium truncate">{projectLabel(p.projectPath)}</p>
-                  {projectSubLabel(p.projectPath) && (
-                    <p className="text-[10px] text-muted-foreground truncate">{projectSubLabel(p.projectPath)}</p>
-                  )}
-                </div>
-                <span className="ml-auto text-[10px] text-muted-foreground shrink-0">{pSessions.length}</span>
-              </button>
-
-              {isExpanded && (
-                <div className="ml-3 mt-0.5 space-y-0.5 border-l border-border pl-2">
-                  {pSessions.map(s => {
-                    const isSelected = s.sessionId === activeSessionId
-                    return (
-                      <button
-                        key={s.sessionId}
-                        onClick={() => navigate(`/s/${s.sessionId}/chat`)}
-                        className={cn(
-                          'w-full flex items-center gap-1 px-2 py-1.5 rounded text-left transition-colors',
-                          isSelected ? 'bg-primary/15 text-primary' : 'hover:bg-muted/50 text-foreground',
-                        )}
-                      >
-                        <div className="flex flex-col min-w-0 flex-1">
-                          <span className="text-xs font-mono truncate">{s.sessionId.slice(0, 8)}</span>
-                          <span className="text-[10px] text-muted-foreground">{formatSessionTime(s.lastModified)}</span>
-                        </div>
-                        <span className="text-[10px] font-mono shrink-0 tabular-nums text-muted-foreground">
-                          {s.sessionId in sessionCosts ? formatCost(sessionCosts[s.sessionId]) : '…'}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
+            <button
+              key={p.projectEncoded}
+              onClick={() => navigate(`/p/${p.projectEncoded}/resources`)}
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2 rounded text-left transition-colors',
+                isActive ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50 text-foreground',
               )}
-            </div>
+            >
+              <div className="flex-1 min-w-0">
+                <p className={cn('text-xs font-medium truncate', isActive ? 'text-primary' : '')}>
+                  {projectLabel(p.projectPath)}
+                </p>
+                {projectSubLabel(p.projectPath) && (
+                  <p className="text-[10px] text-muted-foreground truncate">{projectSubLabel(p.projectPath)}</p>
+                )}
+              </div>
+              <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">{pCount}</span>
+            </button>
           )
         })}
       </div>
@@ -236,6 +199,35 @@ function DarkToggle() {
   )
 }
 
+// ─── Shared tab bar ───────────────────────────────────────────────────────────
+
+function TabBar<T extends string>({
+  tabs, activeTab, onSelect,
+}: {
+  tabs: { id: T; label: string }[]
+  activeTab: T
+  onSelect: (id: T) => void
+}) {
+  return (
+    <div className="shrink-0 border-b flex overflow-x-auto">
+      {tabs.map(t => (
+        <button
+          key={t.id}
+          onClick={() => onSelect(t.id)}
+          className={cn(
+            'px-4 py-2 text-xs font-medium border-b-2 whitespace-nowrap transition-colors',
+            activeTab === t.id
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ─── SessionPage ──────────────────────────────────────────────────────────────
 
 interface SessionPageProps {
@@ -247,11 +239,7 @@ function SessionPage({ sessions, onConnectedChange }: SessionPageProps) {
   const { sessionId = '', tab = 'chat' } = useParams<{ sessionId: string; tab: string }>()
   const navigate = useNavigate()
 
-  // Validate tab param
-  const activeTab = VALID_TABS.has(tab) ? (tab as Tab) : 'chat'
-  if (tab !== activeTab) {
-    // silent redirect handled by route below
-  }
+  const activeTab = VALID_SESSION_TABS.has(tab) ? (tab as SessionTab) : 'chat'
 
   const session = sessions.find(s => s.sessionId === sessionId)
   const [historicalEvents, setHistoricalEvents] = useState<NormalizedEvent[]>([])
@@ -259,32 +247,20 @@ function SessionPage({ sessions, onConnectedChange }: SessionPageProps) {
 
   const { events: liveEvents, connected } = useWebSocket([sessionId])
 
-  useEffect(() => {
-    onConnectedChange(connected)
-  }, [connected, onConnectedChange])
+  useEffect(() => { onConnectedChange(connected) }, [connected, onConnectedChange])
 
   useEffect(() => {
     setHistoricalEvents([])
     if (!sessionId) return
     setLoading(true)
-    fetch(`${API_BASE}/api/sessions/${sessionId}/events`)
-      .then(r => r.json())
-      .then(res => {
-        if (res.success) {
-          const sorted = (res.data as NormalizedEvent[])
-            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-          setHistoricalEvents(sorted.slice(-500))
-        }
-      })
+    fetchSessionEvents(sessionId)
+      .then(evs => setHistoricalEvents(evs.slice(-500)))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [sessionId])
 
   const seenIds = new Set(historicalEvents.map(e => e.id))
-  const events = [
-    ...historicalEvents,
-    ...liveEvents.filter(e => !seenIds.has(e.id)),
-  ]
+  const events = [...historicalEvents, ...liveEvents.filter(e => !seenIds.has(e.id))]
 
   const projectPath = session
     ? sessions.find(s => s.projectEncoded === session.projectEncoded)?.projectPath ?? ''
@@ -292,50 +268,196 @@ function SessionPage({ sessions, onConnectedChange }: SessionPageProps) {
 
   return (
     <>
-      {/* Header */}
       <header className="shrink-0 flex items-center gap-3 px-4 border-b h-12">
         <div className="flex items-center gap-1.5 text-sm min-w-0 flex-1">
           {projectPath && (
-            <span className="text-muted-foreground truncate max-w-[140px]">
-              {projectLabel(projectPath)}
-            </span>
+            <span className="text-muted-foreground truncate max-w-[140px]">{projectLabel(projectPath)}</span>
           )}
           <span className="text-muted-foreground/40">/</span>
           <span className="font-mono text-xs truncate">{sessionId.slice(0, 8)}</span>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          {loading && <span className="text-xs text-muted-foreground animate-pulse">로딩 중…</span>}
-          {!loading && (
-            <span className="text-xs text-muted-foreground">{events.length}개 이벤트</span>
-          )}
+          {loading
+            ? <span className="text-xs text-muted-foreground animate-pulse">로딩 중…</span>
+            : <span className="text-xs text-muted-foreground">{events.length}개 이벤트</span>
+          }
           <DarkToggle />
         </div>
       </header>
 
-      {/* Tab bar */}
-      <div className="shrink-0 border-b flex overflow-x-auto">
-        {TABS.map(t => (
+      <TabBar
+        tabs={SESSION_TABS}
+        activeTab={activeTab}
+        onSelect={id => navigate(`/s/${sessionId}/${id}`)}
+      />
+
+      <main className="flex-1 overflow-y-auto p-4">
+        {activeTab === 'chat'      && <ChatView events={events} />}
+        {activeTab === 'thinking'  && <ThinkingViewer events={events} />}
+        {activeTab === 'tokens'    && <TokenDashboard events={events} />}
+        {activeTab === 'resources' && <ResourcesPanel events={events} />}
+      </main>
+    </>
+  )
+}
+
+// ─── ProjectPage ──────────────────────────────────────────────────────────────
+
+interface ProjectPageProps {
+  sessions: SessionInfo[]
+}
+
+function ProjectPage({ sessions }: ProjectPageProps) {
+  const { projectEncoded = '', tab = 'resources' } = useParams<{ projectEncoded: string; tab: string }>()
+  const navigate = useNavigate()
+
+  const activeTab = VALID_PROJECT_TABS.has(tab) ? (tab as ProjectTab) : 'resources'
+
+  const projectSessions = sessions
+    .filter(s => s.projectEncoded === projectEncoded)
+    .sort((a, b) => b.lastModified - a.lastModified)
+
+  const projectPath = projectSessions[0]?.projectPath ?? ''
+
+  const [allEvents, setAllEvents] = useState<NormalizedEvent[]>([])
+  const [loading, setLoading] = useState(false)
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setAllEvents([])
+    setSelectedSessionId(null)
+    if (projectSessions.length === 0) return
+    setLoading(true)
+
+    Promise.all(projectSessions.map(s => fetchSessionEvents(s.sessionId).catch(() => [])))
+      .then(results => {
+        const merged = results
+          .flat()
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+        const seen = new Set<string>()
+        const deduped = merged.filter(e => {
+          if (seen.has(e.id)) return false
+          seen.add(e.id)
+          return true
+        })
+        setAllEvents(deduped)
+      })
+      .finally(() => setLoading(false))
+  // projectSessions.length: re-run when sessions first load (direct URL navigation)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectEncoded, projectSessions.length])
+
+  // Filter to selected session or show all
+  const events = selectedSessionId
+    ? allEvents.filter(e => e.sessionId === selectedSessionId)
+    : allEvents
+
+  const isAggregate = selectedSessionId === null
+
+  const displayCost = collectUsage(events).reduce(
+    (sum, u) => sum + calcCostUsd(u.usage, u.model),
+    0,
+  )
+
+  return (
+    <>
+      <header className="shrink-0 flex items-center gap-3 px-4 border-b h-12">
+        <div className="flex items-center gap-1.5 text-sm min-w-0 flex-1">
+          <span className="font-medium truncate">{projectLabel(projectPath)}</span>
+          <span className="text-muted-foreground/40">/</span>
+          {isAggregate ? (
+            <span className="text-xs text-muted-foreground shrink-0">전체 {projectSessions.length}개 세션</span>
+          ) : (
+            <span className="text-xs font-mono text-foreground shrink-0">{selectedSessionId?.slice(0, 8)}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          {loading
+            ? <span className="text-xs text-muted-foreground animate-pulse">로딩 중…</span>
+            : (
+              <span className="text-xs text-muted-foreground">
+                {events.length}개 이벤트
+                {displayCost > 0 && <span className="ml-2 font-mono">{formatCost(displayCost)}</span>}
+              </span>
+            )
+          }
+          <DarkToggle />
+        </div>
+      </header>
+
+      <TabBar
+        tabs={PROJECT_TABS}
+        activeTab={activeTab}
+        onSelect={id => navigate(`/p/${projectEncoded}/${id}`)}
+      />
+
+      <div className="flex-1 overflow-hidden flex">
+        {/* ── Session picker ── */}
+        <div className="w-44 shrink-0 border-r border-border flex flex-col overflow-y-auto">
+          {/* Aggregate option */}
           <button
-            key={t.id}
-            onClick={() => navigate(`/s/${sessionId}/${t.id}`)}
+            onClick={() => setSelectedSessionId(null)}
             className={cn(
-              'px-4 py-2 text-xs font-medium border-b-2 whitespace-nowrap transition-colors',
-              activeTab === t.id
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
+              'w-full px-3 py-2.5 text-left transition-colors border-b border-border',
+              isAggregate
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/30',
             )}
           >
-            {t.label}
+            <p className="text-xs font-medium">전체 집계</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{projectSessions.length}개 세션</p>
           </button>
-        ))}
-      </div>
 
-      {/* Content */}
+          {/* Individual sessions */}
+          {projectSessions.map(s => {
+            const isSelected = s.sessionId === selectedSessionId
+            return (
+              <button
+                key={s.sessionId}
+                onClick={() => setSelectedSessionId(s.sessionId)}
+                className={cn(
+                  'w-full px-3 py-2 text-left transition-colors border-b border-border/40',
+                  isSelected
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/30',
+                )}
+              >
+                <p className="text-xs font-mono truncate">{s.sessionId.slice(0, 8)}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{formatSessionTime(s.lastModified)}</p>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* ── Content ── */}
+        <main className="flex-1 overflow-y-auto p-4">
+          {loading && (
+            <p className="text-sm text-muted-foreground animate-pulse py-8 text-center">
+              {projectSessions.length}개 세션 로딩 중…
+            </p>
+          )}
+          {!loading && activeTab === 'thinking'  && <ThinkingViewer events={events} />}
+          {!loading && activeTab === 'tokens'    && <TokenDashboard events={events} />}
+          {!loading && activeTab === 'resources' && (
+            <ResourcesPanel events={events} multiSession={isAggregate} />
+          )}
+        </main>
+      </div>
+    </>
+  )
+}
+
+// ─── Analytics page ───────────────────────────────────────────────────────────
+
+function AnalyticsPage({ sessions }: { sessions: SessionInfo[] }) {
+  return (
+    <>
+      <header className="shrink-0 flex items-center gap-3 px-4 border-b h-12">
+        <p className="flex-1 text-sm font-medium">전체 Analytics</p>
+        <DarkToggle />
+      </header>
       <main className="flex-1 overflow-y-auto p-4">
-        {activeTab === 'chat'       && <ChatView events={events} />}
-        {activeTab === 'thinking'   && <ThinkingViewer events={events} />}
-        {activeTab === 'tokens'     && <TokenDashboard events={events} />}
-        {activeTab === 'tool-stats' && <ToolStats events={events} />}
+        <GlobalAnalytics sessions={sessions} />
       </main>
     </>
   )
@@ -344,7 +466,7 @@ function SessionPage({ sessions, onConnectedChange }: SessionPageProps) {
 // ─── Home page ────────────────────────────────────────────────────────────────
 
 function HomePage() {
-  const { dark } = useTheme()   // just to keep theme hook alive at top level
+  const { dark } = useTheme()
   void dark
   return (
     <>
@@ -361,7 +483,7 @@ function HomePage() {
 // ─── App root ─────────────────────────────────────────────────────────────────
 
 export default function App() {
-  useTheme()   // initialize theme on mount (applies dark class to <html>)
+  useTheme()
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [connected, setConnected] = useState(false)
 
@@ -379,16 +501,11 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/analytics" element={<AnalyticsPage sessions={sessions} />} />
           <Route path="/s/:sessionId" element={<Navigate to="chat" replace />} />
-          <Route
-            path="/s/:sessionId/:tab"
-            element={
-              <SessionPage
-                sessions={sessions}
-                onConnectedChange={setConnected}
-              />
-            }
-          />
+          <Route path="/s/:sessionId/:tab" element={<SessionPage sessions={sessions} onConnectedChange={setConnected} />} />
+          <Route path="/p/:projectEncoded" element={<Navigate to="resources" replace />} />
+          <Route path="/p/:projectEncoded/:tab" element={<ProjectPage sessions={sessions} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { cn } from '../lib/utils'
 import { BADGE_COLORS } from '../lib/categories'
 import { CategoryBadge } from './CategoryBadge'
+import { OriginBadge } from './OriginBadge'
 import { SessionSummaryCard } from './SessionSummaryCard'
 import { DiffView } from './DiffView'
 import type { NormalizedEvent, EventCategory } from '../types/events'
@@ -23,16 +24,23 @@ export function ThinkingViewer({ events }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [active, setActive] = useState<Set<ViewerCategory>>(new Set(VIEWER_CATS))
   const [showDiff, setShowDiff] = useState<Set<string>>(new Set())
+  const [originFilter, setOriginFilter] = useState<'all' | 'main' | 'subagent'>('all')
+
+  const subagentCount = useMemo(
+    () => events.filter((e) => e.origin === 'subagent').length,
+    [events],
+  )
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return events.filter((e) => {
       if (!VIEWER_SET.has(e.category)) return false
       if (!active.has(e.category as ViewerCategory)) return false
+      if (originFilter !== 'all' && (e.origin ?? 'main') !== originFilter) return false
       if (q && !e.summary.toLowerCase().includes(q)) return false
       return true
     })
-  }, [events, active, search])
+  }, [events, active, search, originFilter])
 
   const toggleExpand = (id: string) =>
     setExpanded((prev) => {
@@ -81,6 +89,27 @@ export function ThinkingViewer({ events }: Props) {
             {cat}
           </button>
         ))}
+        {/* 서브에이전트가 있는 세션에서만 origin 필터 노출 */}
+        {subagentCount > 0 && (
+          <div className="flex items-center gap-1 ml-1 pl-2 border-l">
+            {(['all', 'main', 'subagent'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setOriginFilter(mode)}
+                className={cn(
+                  'text-xs px-2 py-1 rounded border transition-opacity',
+                  originFilter === mode
+                    ? mode === 'subagent'
+                      ? 'bg-violet-500/15 text-violet-500 border-violet-500/30'
+                      : 'bg-muted text-foreground border-transparent'
+                    : 'bg-muted/30 text-muted-foreground border-transparent opacity-40',
+                )}
+              >
+                {mode === 'all' ? '전체' : mode === 'main' ? '메인' : `⑂ 서브 ${subagentCount}`}
+              </button>
+            ))}
+          </div>
+        )}
         <span className="ml-auto text-xs text-muted-foreground">{filtered.length}개</span>
       </div>
 
@@ -100,6 +129,7 @@ export function ThinkingViewer({ events }: Props) {
                   {new Date(ev.timestamp).toLocaleTimeString()}
                 </span>
                 <CategoryBadge category={ev.category} />
+                <OriginBadge origin={ev.origin} agentId={ev.agentId} />
                 <span className="flex-1 text-sm truncate text-foreground/80">{ev.summary}</span>
                 {diffData && (
                   <button
