@@ -1,0 +1,22 @@
+{
+  "name": "claude-code-observer-sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "로컬 ~/.claude 데이터를 클라우드 Observer 서버로 밀어 넣는 동기화 잡",
+  "scripts": {
+    "setup": "tsx setup.ts",
+    "manifest": "tsx generate-manifest.ts",
+    "summaries": "tsx generate-summaries.ts",
+    "upload": "tsx upload-sessions.ts",
+    "all": "npm run manifest && npm run summaries && npm run upload",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.7"
+  }
+}

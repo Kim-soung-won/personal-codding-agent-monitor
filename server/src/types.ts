@@ -30,4 +30,8 @@ export interface SessionInfo {
   lastModified: number
   /** {session-uuid}/subagents/*.jsonl 절대경로. 없으면 빈 배열 */
   subagentFilePaths: string[]
+  /** 로컬 sync 잡이 생성한 세션 제목 요약. 사이드카(.summary.json) 있을 때만 */
+  title?: string
+  /** 로컬 sync 잡이 생성한 세션 설명 요약. 사이드카(.summary.json) 있을 때만 */
+  description?: string
 }

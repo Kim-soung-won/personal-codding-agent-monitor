@@ -5,7 +5,6 @@ import chokidar from 'chokidar'
 import { JsonlEventParser } from '../parser/index.js'
 import type { EventOrigin, NormalizedEvent } from '../types.js'
 
-const CLAUDE_PROJECTS = join(homedir(), '.claude', 'projects')
 const MAX_BUFFER = 500
 
 const parser = new JsonlEventParser()
@@ -67,8 +66,9 @@ async function tailFile(filePath: string, broadcast: (data: unknown) => void): P
   }
 }
 
-export function startWatcher(broadcast: (data: unknown) => void): void {
-  const pattern = `${CLAUDE_PROJECTS}/**/*.jsonl`
+export function startWatcher(broadcast: (data: unknown) => void, baseDir?: string): void {
+  const projectsDir = baseDir ?? join(homedir(), '.claude', 'projects')
+  const pattern = `${projectsDir}/**/*.jsonl`
 
   const watcher = chokidar.watch(pattern, {
     persistent: true,

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  로컬 동기화 잡을 매일 지정 시각에 실행하는 launchd 예시.
+
+  설치:
+    1) ProgramArguments 의 run.sh 절대경로를 실제 위치로 수정
+    2) StandardOut/ErrorPath 경로 확인
+    3) 매일 19:00(퇴근 후)에 돌도록 Hour/Minute 조정
+    4) cp com.observer.sync.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/com.observer.sync.plist
+
+  주의: launchd 는 최소 PATH 로 실행되므로 run.sh 안에서 node/tsx 절대경로가
+  필요할 수 있다(`which node` 결과를 확인). 또는 EnvironmentVariables 로 PATH 를 지정.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.observer.sync</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/ABSOLUTE/PATH/TO/personal-coding-agent-monitor/sync/run.sh</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>19</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/observer-sync.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/observer-sync.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>

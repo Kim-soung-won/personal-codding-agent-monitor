@@ -1,20 +1,77 @@
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { homedir } from 'node:os'
 import express from 'express'
 import cors from 'cors'
 import { WebSocketServer, WebSocket } from 'ws'
 import { scanSessions } from './scanner/index.js'
 import { startWatcher } from './watcher/index.js'
 import { JsonlEventParser } from './parser/index.js'
+import { createAuthMiddleware, isWsAuthorized } from './middleware/auth.js'
+import { createSyncRouter } from './routes/sync.js'
+import { createStatsRouter } from './routes/stats.js'
+import { createDbSessionsRouter } from './routes/db-sessions.js'
+import { createDbMetaRouter } from './routes/db-meta.js'
+import { createDb } from './db/client.js'
+import { KyselySessionRepository } from './repositories/session-repository.js'
+import { KyselyEventRepository } from './repositories/event-repository.js'
+import { KyselyStatsRepository } from './repositories/stats-repository.js'
+import { KyselyMetaRepository } from './repositories/meta-repository.js'
 import { aggregateUsageByModel, collectUsage } from '../../shared/pricing.js'
 import type { EventOrigin, NormalizedEvent } from './types.js'
 
-const PORT = 3001
+// 로컬 dev 편의: cwd(server/)의 .env 를 process.env 로 로드한다.
+// 프로덕션/Docker 는 .env 파일 없이 플랫폼 환경변수를 쓰므로 이 블록은 건너뛴다.
+if (existsSync('.env')) {
+  process.loadEnvFile('.env')
+}
+
+// ─── 환경 설정 ──────────────────────────────────────────────────────────────
+// 모두 미설정 시 기존 로컬 dev 동작과 동일(단, AUTH_TOKEN 은 필수 — 아래 부팅 검사 참조).
+const DATA_DIR = process.env.CLAUDE_DATA_DIR ?? join(homedir(), '.claude', 'projects')
+const DB_PATH = process.env.DB_PATH ?? join(DATA_DIR, 'observer.db')
+const PORT = Number(process.env.PORT) || 3001
+const HOST = process.env.HOST ?? '0.0.0.0'
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? '*'
+const AUTH_TOKEN = process.env.AUTH_TOKEN
+
+// 인증 없이 외부에 뜨는 사고를 막기 위해 토큰 미설정 시 부팅을 거부한다.
+// 로컬 dev 도 .env 에 임의 토큰을 넣어야 한다(.env.example 참조).
+if (!AUTH_TOKEN) {
+  console.error(
+    '[server] AUTH_TOKEN 환경변수가 설정되지 않았습니다. ' +
+      '.env 에 AUTH_TOKEN 을 지정한 뒤 다시 실행하세요.',
+  )
+  process.exit(1)
+}
+
 const parser = new JsonlEventParser()
+
+// DB 초기화 — migrate 가 리스닝 전에 완료되도록 부팅 초반에 수행.
+// 마이그레이션 실패 시 예외로 부팅이 중단돼 스키마 불일치 상태로 뜨지 않는다.
+const db = createDb(DB_PATH)
+const sessionRepo = new KyselySessionRepository(db)
+const eventRepo = new KyselyEventRepository(db)
+const statsRepo = new KyselyStatsRepository(db)
+const metaRepo = new KyselyMetaRepository(db)
+
 const app = express()
 
-app.use(cors({ origin: 'http://localhost:5173' }))
+app.use(cors({ origin: ALLOWED_ORIGIN }))
 app.use(express.json())
+
+// /api 전체를 토큰 인증으로 보호(정적 페이지 없음이므로 전역 적용 가능)
+app.use('/api', createAuthMiddleware(AUTH_TOKEN))
+
+// 로컬 sync 잡의 업로드 엔드포인트(파일 저장 + DB ingest)
+app.use('/api/sync', createSyncRouter(DATA_DIR, { db }))
+
+// DB 기반 신규 엔드포인트 (기존 /api/sessions* 파일 기반과 분리, 점진 전환)
+app.use('/api/stats', createStatsRouter(statsRepo))
+app.use('/api/db', createDbMetaRouter(metaRepo))
+app.use('/api/db/sessions', createDbSessionsRouter(sessionRepo, eventRepo))
 
 const httpServer = createServer(app)
 const wss = new WebSocketServer({ server: httpServer })
@@ -30,7 +87,12 @@ function broadcast(data: unknown): void {
   }
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  // WS 는 헤더를 못 쓰므로 ?token= 쿼리로 인증한다
+  if (!isWsAuthorized(req.url, AUTH_TOKEN)) {
+    ws.close(4401, 'unauthorized')
+    return
+  }
   clients.add(ws)
   ws.on('close', () => clients.delete(ws))
 })
@@ -67,7 +129,7 @@ async function parseSessionFiles(
 
 app.get('/api/sessions', async (_req, res) => {
   try {
-    const sessions = await scanSessions()
+    const sessions = await scanSessions(DATA_DIR)
     res.json({ success: true, data: sessions })
   } catch (err) {
     res.status(500).json({ success: false, error: String(err) })
@@ -76,7 +138,7 @@ app.get('/api/sessions', async (_req, res) => {
 
 app.get('/api/sessions/:sessionId/events', async (req, res) => {
   try {
-    const sessions = await scanSessions()
+    const sessions = await scanSessions(DATA_DIR)
     const session = sessions.find((s) => s.sessionId === req.params.sessionId)
     if (!session) {
       res.status(404).json({ success: false, error: 'Session not found' })
@@ -97,7 +159,7 @@ app.get('/api/sessions/:sessionId/events', async (req, res) => {
 
 app.get('/api/sessions/:sessionId/cost', async (req, res) => {
   try {
-    const sessions = await scanSessions()
+    const sessions = await scanSessions(DATA_DIR)
     const session = sessions.find((s) => s.sessionId === req.params.sessionId)
     if (!session) {
       res.status(404).json({ success: false, error: 'Session not found' })
@@ -131,8 +193,8 @@ app.get('/api/sessions/:sessionId/cost', async (req, res) => {
   }
 })
 
-startWatcher(broadcast)
+startWatcher(broadcast, DATA_DIR)
 
-httpServer.listen(PORT, '127.0.0.1', () => {
-  console.log(`[server] http://localhost:${PORT}`)
+httpServer.listen(PORT, HOST, () => {
+  console.log(`[server] listening on ${HOST}:${PORT} (data: ${DATA_DIR})`)
 })
