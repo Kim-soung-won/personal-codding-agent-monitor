@@ -30,12 +30,21 @@
 | 이전 세션 요약 (hook stdout 파싱) | ✅ 완료 |
 | tool_use diff 뷰 (Edit/Write) | ✅ 완료 |
 | metrics/costs.jsonl 연동 | ❌ 제거 (2026-07-20 — 데이터가 전부 무의미해 죽은 경로였음) |
+| 클라우드 배포 1차 — env 기반 탈로컬화 (DATA_DIR/PORT/HOST) | ✅ 완료 (2026-07-23) |
+| 클라우드 배포 1차 — 단일 토큰 인증 (REST + WS) | ✅ 완료 (2026-07-23) |
+| 클라우드 배포 1차 — manifest 기반 경로 라벨 복원 | ✅ 완료 (2026-07-23) |
+| 세션 제목·설명 요약 (.summary.json 사이드카) | ✅ 완료 (2026-07-23) |
+| 로컬 동기화 잡 (sync/ — manifest·요약·additive 업로드) | ✅ 완료 (2026-07-23) |
+| Dockerfile + 배포 문서 | ✅ 완료 (2026-07-23) |
+| 클라우드 배포 2차 — DB ingest (SQLite/Kysely) | ✅ Phase 2a 완료 (2026-07-23, §8) |
+| 클라우드 배포 2차 — 클라이언트 통계 대시보드 | 🔲 Phase 2b 대기 (§8) |
 
 > 상세 개발 기록:
 > - [`vault/notes/dev-log-2026-05-22.md`](../notes/dev-log-2026-05-22.md)
 > - [`vault/notes/dev-log-2026-05-28.md`](../notes/dev-log-2026-05-28.md)
 > - [`vault/notes/dev-log-2026-06-04.md`](../notes/dev-log-2026-06-04.md)
 > - [`vault/notes/dev-log-2026-07-20.md`](../notes/dev-log-2026-07-20.md)
+> - [`vault/notes/dev-log-2026-07-23.md`](../notes/dev-log-2026-07-23.md)
 
 ---
 
@@ -58,9 +67,9 @@ Claude Code Observer는 이 파일을 실시간으로 파싱·시각화해 다�
 
 | 항목 | 결정 |
 |------|------|
-| 실행 환경 | `localhost` 전용, 외부 노출 없음 |
-| 실행 방법 | `npm run dev` 단일 명령 |
-| 데이터 소스 | `~/.claude/projects/**/*.jsonl` (로컬 파일시스템) |
+| 실행 환경 | **1차**: 클라우드 상시 배포(HTTPS + 단일 토큰). 로컬 dev 는 env 미설정 시 기존과 동일 |
+| 실행 방법 | 로컬: `npm run dev` · 클라우드: Docker(server) + 정적 빌드(client) + sync 잡 |
+| 데이터 소스 | 로컬: `~/.claude/projects/**/*.jsonl` · 클라우드: sync 잡이 동기화한 `CLAUDE_DATA_DIR` |
 | JSONL 스펙 | **비공식**. Claude Code 업데이트 시 포맷 변경 가능 → 방어적 파싱 필수 |
 | 이벤트 버퍼 | 최근 500개 유지 (메모리 보호) |
 
@@ -336,3 +345,39 @@ Claude Code Observer는 이 파일을 실시간으로 파싱·시각화해 다�
 | 클라이언트 | Vite 5 + React 18 + TypeScript 5 |
 | UI | Tailwind CSS v3 + shadcn/ui |
 | 포트 | 서버 3001 / 클라이언트 5173 |
+| 배포 | server: Docker(멀티스테이지) · client: 정적 빌드 · sync: tsx + launchd/cron |
+
+---
+
+## 8. 클라우드 배포 2차 — DB ingest
+
+1차는 동기화된 JSONL 파일을 요청마다 재스캔·재파싱해 서빙한다. 누적 시 느려지고
+검색·필터·집계에 한계가 있어, 2차에서 파싱 결과를 SQLite 에 적재한다.
+
+### Phase 2a — 백엔드 데이터 레이어 (✅ 완료, 2026-07-23)
+
+- **스택**: SQLite + better-sqlite3 + Kysely(Postgres-ready). DDL은 `db/schema.ts` 문자열 상수
+  (10 테이블 + 4 뷰). 스키마·집계 실측 검증 + 실제 데이터 백필(세션 145·서브에이전트 244, 에러 0) 완료.
+- **Repository 추상화**: `SessionRepository`/`EventRepository`/`StatsRepository` 뒤에 Kysely 구현.
+  Postgres 전환 시 `db/client.ts` dialect만 교체.
+- **ingest-on-upload**: `/api/sync/*` 가 파일 저장(백업) + `JsonlEventParser` 파싱 + DB upsert.
+  **`IEventParser` 는 1차와 동일 재사용**. `source_files` mtime 가드로 증분·멱등, 파일 단위 delete+reinsert.
+- **신규 엔드포인트**: `/api/db/sessions*`, `/api/stats/{resources,plugins,subagents,tokens/daily}`.
+  기존 `/api/sessions*`(파일 기반)은 불변 — 점진 전환.
+- **차원**: users(git 신원, sync 주입) · projects(cwd) · plugins · sub_agents(중첩 `sub_agent_id`) ·
+  resource(skill/agent/mcp) · usage(requestId 중복제거). title=JSONL(aiTitle/customTitle), description=요약(CLI).
+- **백필**: `db/backfill.ts` — 배포 이전 파일 소급 적재 + 'DB 삭제 후 전체 재구성' 롤백 도구.
+
+### Phase 2b — 클라이언트 통계 대시보드 (🔲 대기)
+
+- `client/src/lib/statsApi.ts` + 훅으로 `/api/stats/*` 소비.
+- GlobalAnalytics 를 서버 집계 사용으로 전환, 리소스/플러그인 평가(고빈도·저빈도·에러율) 뷰,
+  sub-agent 통계 뷰, 날짜·유저 필터 UI. 기존 flat 구조(components/hooks/lib) 유지.
+- `/api/sessions*` → `/api/db/sessions*` 완전 전환 여부는 2b 완료 후 별도 논의.
+
+### 알려진 한계
+
+- **spawn_invocation_id 미연결(0건)**: 서브에이전트↔부모 Agent 호출의 정밀 연결키(sourceToolAssistantUUID)가
+  실측에서 안 맞음. "어떤 sub-agent가 호출했나"는 `sub_agent_id` 로 동작하므로 부가 정보로 남김(best-effort).
+- **plugin installed 여부**: JSONL엔 "호출된" 플러그인만 드러남. 진짜 죽은 플러그인은 `~/.claude/plugins` 매니페스트(sync 주입) 필요.
+- **false negative**: "떴어야 했는데 안 뜬" 리소스는 데이터에 흔적이 없어 직접 측정 불가.
