@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { cn } from '../lib/utils'
+import { KIND_STYLES } from '../lib/resourceKind'
 import type { NormalizedEvent } from '../types/events'
 import {
   extractToolCalls, toResourceInvocation, groupInvocations, groupByPlugin,
-} from '../lib/resourceExtract'
-import type { ResourceInvocation, ResourceGroup, PluginGroup } from '../lib/resourceExtract'
+} from '@shared/resource-extract'
+import type { ResourceInvocation, ResourceGroup, PluginGroup } from '@shared/resource-extract'
 
 interface Props {
   events: NormalizedEvent[]
@@ -12,39 +13,6 @@ interface Props {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const KIND_STYLES = {
-  skill: {
-    dot: 'bg-violet-500',
-    badge: 'bg-violet-500/10 text-violet-400 border border-violet-500/20',
-    bar: 'bg-violet-400',
-    label: 'Skill',
-  },
-  agent: {
-    dot: 'bg-amber-500',
-    badge: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
-    bar: 'bg-amber-400',
-    label: 'Agent',
-  },
-  workflow: {
-    dot: 'bg-emerald-500',
-    badge: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
-    bar: 'bg-emerald-400',
-    label: 'Workflow',
-  },
-  artifact: {
-    dot: 'bg-cyan-500',
-    badge: 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20',
-    bar: 'bg-cyan-400',
-    label: 'Artifact',
-  },
-  mcp: {
-    dot: 'bg-rose-500',
-    badge: 'bg-rose-500/10 text-rose-400 border border-rose-500/20',
-    bar: 'bg-rose-400',
-    label: 'MCP',
-  },
-} as const
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleString('ko-KR', {

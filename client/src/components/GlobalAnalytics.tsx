@@ -2,19 +2,11 @@ import { useState, useEffect, useMemo } from 'react'
 import { BarChart, DatelineChart, DoughnutChart } from '@we/ai-template'
 import type { BarChartView, CategoryDoughnutChartView, DateLineChartView } from '@we/ai-template'
 import { useTheme } from '../hooks/useTheme'
-import { extractInvocations, groupByPlugin } from '../lib/resourceExtract'
+import { extractInvocations, groupByPlugin } from '@shared/resource-extract'
+import { apiFetch } from '../lib/config'
+import { KIND_HEX as KIND_COLORS } from '../lib/resourceKind'
 import { calcCostUsd, collectUsage } from '@shared/pricing'
 import type { NormalizedEvent, SessionInfo } from '../types/events'
-
-const API_BASE = 'http://localhost:3001'
-
-const KIND_COLORS = {
-  skill:    '#8b5cf6',
-  agent:    '#f59e0b',
-  workflow: '#10b981',
-  artifact: '#06b6d4',
-  mcp:      '#f43f5e',
-}
 
 function projectLabel(path: string): string {
   const parts = path.split('/').filter(Boolean)
@@ -52,7 +44,7 @@ export function GlobalAnalytics({ sessions }: Props) {
     setLoading(true)
     Promise.all(
       sessions.map(s =>
-        fetch(`${API_BASE}/api/sessions/${s.sessionId}/events`)
+        apiFetch(`/api/sessions/${s.sessionId}/events`)
           .then(r => r.json())
           .then(res => (res.success ? (res.data as NormalizedEvent[]) : []))
           .catch(() => [] as NormalizedEvent[]),

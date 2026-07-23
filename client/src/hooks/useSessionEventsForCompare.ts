@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useWebSocket } from './useWebSocket'
+import { apiFetch } from '../lib/config'
 import type { NormalizedEvent } from '../types/events'
 
-const API_BASE = 'http://localhost:3001'
 const MAX_BUFFER = 500
 
 export function useSessionEventsForCompare(sessionId: string | null): {
@@ -25,7 +25,7 @@ export function useSessionEventsForCompare(sessionId: string | null): {
     abortRef.current = controller
 
     setLoading(true)
-    fetch(`${API_BASE}/api/sessions/${sessionId}/events`, { signal: controller.signal })
+    apiFetch(`/api/sessions/${sessionId}/events`, { signal: controller.signal })
       .then((r) => r.json())
       .then((res) => {
         if (controller.signal.aborted) return

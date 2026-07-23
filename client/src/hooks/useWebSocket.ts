@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
+import { getWsUrl, getAuthToken } from '../lib/config'
 import type { WsMessage, NormalizedEvent } from '../types/events'
 
-const WS_URL = 'ws://localhost:3001'
 const MAX_BUFFER = 500
 
 export function useWebSocket(sessionIds: string[]) {
@@ -15,7 +15,8 @@ export function useWebSocket(sessionIds: string[]) {
   }, [sessionIds])
 
   const connect = useCallback(() => {
-    const ws = new WebSocket(WS_URL)
+    const token = getAuthToken() ?? ''
+    const ws = new WebSocket(`${getWsUrl()}?token=${encodeURIComponent(token)}`)
     wsRef.current = ws
 
     ws.onopen = () => setConnected(true)

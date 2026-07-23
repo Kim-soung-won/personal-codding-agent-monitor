@@ -29,6 +29,14 @@
     --sidebar: 220 14% 94%;
     --sidebar-foreground: 224 20% 10%;
     --sidebar-border: 220 13% 87%;
+    /* Analytics density tokens */
+    --border-subtle: 220 13% 92%;
+    --table-stripe: 220 14% 98.5%;
+    --table-header: 220 14% 95%;
+    --success: 142 66% 40%;
+    --success-foreground: 0 0% 100%;
+    --warning: 35 92% 45%;
+    --warning-foreground: 0 0% 100%;
   }
 
   .dark {
@@ -56,6 +64,14 @@
     --sidebar: 224 13% 10%;
     --sidebar-foreground: 220 14% 80%;
     --sidebar-border: 224 13% 18%;
+    /* Analytics density tokens */
+    --border-subtle: 224 13% 15%;
+    --table-stripe: 224 13% 10.5%;
+    --table-header: 224 13% 14%;
+    --success: 142 60% 45%;
+    --success-foreground: 224 13% 8%;
+    --warning: 38 90% 55%;
+    --warning-foreground: 224 13% 8%;
   }
 }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useTheme } from './hooks/useTheme'
 import { ChatView } from './components/ChatView'
@@ -8,11 +8,13 @@ import { TokenDashboard } from './components/TokenDashboard'
 import { ResourcesPanel } from './components/ResourcesPanel'
 import { WelcomeDashboard } from './components/WelcomeDashboard'
 import { GlobalAnalytics } from './components/GlobalAnalytics'
+import { SessionTitleBadge } from './components/SessionTitleBadge'
+import { AppShell } from './components/AppShell'
+import { ResourceDashboardPage } from './pages/ResourceDashboardPage'
 import { cn } from './lib/utils'
+import { apiFetch } from './lib/config'
 import { calcCostUsd, collectUsage } from '@shared/pricing'
 import type { NormalizedEvent, SessionInfo } from './types/events'
-
-const API_BASE = 'http://localhost:3001'
 
 type SessionTab = 'chat' | 'thinking' | 'tokens' | 'resources'
 type ProjectTab = 'thinking' | 'tokens' | 'resources'
@@ -47,132 +49,17 @@ function projectLabel(path: string): string {
   return parts[parts.length - 1] ?? path
 }
 
-function projectSubLabel(path: string): string {
-  const parts = path.split('/').filter(Boolean)
-  return parts.slice(-3, -1).join('/') || ''
-}
-
 function formatCost(usd: number): string {
   if (usd < 0.005) return '<$0.01'
   return `$${usd.toFixed(2)}`
 }
 
 async function fetchSessionEvents(sessionId: string): Promise<NormalizedEvent[]> {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/events`)
+  const res = await apiFetch(`/api/sessions/${sessionId}/events`)
   const json = await res.json()
   if (!json.success) return []
   return (json.data as NormalizedEvent[])
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-}
-
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
-
-interface SidebarProps {
-  sessions: SessionInfo[]
-  connected: boolean
-}
-
-function Sidebar({ sessions, connected }: SidebarProps) {
-  const navigate = useNavigate()
-  const location = useLocation()
-
-  const projectMatch = location.pathname.match(/^\/p\/([^/]+)/)
-  const activeProjectEncoded = projectMatch?.[1]
-  const sessionMatch = location.pathname.match(/^\/s\/([^/]+)/)
-  const activeSessionId = sessionMatch?.[1]
-
-  // Deduplicated project list, most recent first
-  const projects = (() => {
-    const seen = new Map<string, SessionInfo>()
-    for (const s of sessions) {
-      if (!seen.has(s.projectEncoded)) seen.set(s.projectEncoded, s)
-    }
-    return [...seen.values()].sort((a, b) => b.lastModified - a.lastModified)
-  })()
-
-  return (
-    <aside
-      className="w-56 shrink-0 flex flex-col h-full overflow-hidden"
-      style={{
-        background: 'hsl(var(--sidebar))',
-        borderRight: '1px solid hsl(var(--sidebar-border))',
-        color: 'hsl(var(--sidebar-foreground))',
-      }}
-    >
-      {/* Logo */}
-      <button
-        onClick={() => navigate('/')}
-        className="px-4 py-4 flex items-center gap-2.5 shrink-0 hover:bg-muted/30 transition-colors text-left w-full"
-      >
-        <div className="w-6 h-6 rounded bg-primary/20 flex items-center justify-center shrink-0">
-          <span className="text-xs font-bold text-primary">C</span>
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold leading-none">Claude Observer</p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">Session Monitor</p>
-        </div>
-        <div
-          className={cn('ml-auto w-2 h-2 rounded-full shrink-0', connected ? 'bg-green-500' : 'bg-red-400')}
-          title={connected ? 'Connected' : 'Disconnected'}
-        />
-      </button>
-
-      <div className="mx-3 mb-2 shrink-0" style={{ height: '1px', background: 'hsl(var(--sidebar-border))' }} />
-
-      {/* Analytics */}
-      <div className="px-2 mb-1 shrink-0">
-        <button
-          onClick={() => navigate('/analytics')}
-          className={cn(
-            'w-full flex items-center gap-2 px-3 py-2 rounded text-left text-xs font-medium transition-colors',
-            location.pathname === '/analytics'
-              ? 'bg-primary/10 text-primary'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
-          )}
-        >
-          <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          </svg>
-          Analytics
-        </button>
-      </div>
-
-      <div className="mx-3 mb-2 shrink-0" style={{ height: '1px', background: 'hsl(var(--sidebar-border))' }} />
-
-      {/* Flat project list */}
-      <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5">
-        {projects.length === 0 && (
-          <p className="text-xs text-muted-foreground px-2 py-4 text-center">세션 없음</p>
-        )}
-        {projects.map(p => {
-          const pCount = sessions.filter(s => s.projectEncoded === p.projectEncoded).length
-          const isActive = p.projectEncoded === activeProjectEncoded
-            || sessions.some(s => s.sessionId === activeSessionId && s.projectEncoded === p.projectEncoded)
-
-          return (
-            <button
-              key={p.projectEncoded}
-              onClick={() => navigate(`/p/${p.projectEncoded}/resources`)}
-              className={cn(
-                'w-full flex items-center gap-2 px-3 py-2 rounded text-left transition-colors',
-                isActive ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50 text-foreground',
-              )}
-            >
-              <div className="flex-1 min-w-0">
-                <p className={cn('text-xs font-medium truncate', isActive ? 'text-primary' : '')}>
-                  {projectLabel(p.projectPath)}
-                </p>
-                {projectSubLabel(p.projectPath) && (
-                  <p className="text-[10px] text-muted-foreground truncate">{projectSubLabel(p.projectPath)}</p>
-                )}
-              </div>
-              <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">{pCount}</span>
-            </button>
-          )
-        })}
-      </div>
-    </aside>
-  )
 }
 
 // ─── Dark mode toggle ─────────────────────────────────────────────────────────
@@ -292,6 +179,7 @@ function SessionPage({ sessions, onConnectedChange }: SessionPageProps) {
       />
 
       <main className="flex-1 overflow-y-auto p-4">
+        <SessionTitleBadge title={session?.title} description={session?.description} />
         {activeTab === 'chat'      && <ChatView events={events} />}
         {activeTab === 'thinking'  && <ThinkingViewer events={events} />}
         {activeTab === 'tokens'    && <TokenDashboard events={events} />}
@@ -423,6 +311,7 @@ function ProjectPage({ sessions }: ProjectPageProps) {
                 )}
               >
                 <p className="text-xs font-mono truncate">{s.sessionId.slice(0, 8)}</p>
+                {s.title && <p className="text-[11px] font-medium truncate mt-0.5">{s.title}</p>}
                 <p className="text-[10px] text-muted-foreground mt-0.5">{formatSessionTime(s.lastModified)}</p>
               </button>
             )
@@ -485,30 +374,31 @@ function HomePage() {
 export default function App() {
   useTheme()
   const [sessions, setSessions] = useState<SessionInfo[]>([])
-  const [connected, setConnected] = useState(false)
+  // 전역 WS 연결 상태(빈 세션 구독 = 연결 표시용). 셸의 연결 점에 반영.
+  const { connected } = useWebSocket([])
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/sessions`)
+    apiFetch('/api/sessions')
       .then(r => r.json())
       .then(res => { if (res.success) setSessions(res.data) })
       .catch(() => {})
   }, [])
 
   return (
-    <div className="h-screen flex bg-background text-foreground overflow-hidden">
-      <Sidebar sessions={sessions} connected={connected} />
-
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/analytics" element={<AnalyticsPage sessions={sessions} />} />
-          <Route path="/s/:sessionId" element={<Navigate to="chat" replace />} />
-          <Route path="/s/:sessionId/:tab" element={<SessionPage sessions={sessions} onConnectedChange={setConnected} />} />
-          <Route path="/p/:projectEncoded" element={<Navigate to="resources" replace />} />
-          <Route path="/p/:projectEncoded/:tab" element={<ProjectPage sessions={sessions} />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </div>
-    </div>
+    <AppShell connected={connected}>
+      <Routes>
+        {/* 신규 분석 대시보드 */}
+        <Route path="/" element={<ResourceDashboardPage />} />
+        {/* 참고자료(구 홈) */}
+        <Route path="/reference/pricing" element={<HomePage />} />
+        {/* 레거시 뷰(Phase 2b-2에서 대시보드로 대체 예정, 현재 URL로 접근 가능) */}
+        <Route path="/analytics" element={<AnalyticsPage sessions={sessions} />} />
+        <Route path="/s/:sessionId" element={<Navigate to="chat" replace />} />
+        <Route path="/s/:sessionId/:tab" element={<SessionPage sessions={sessions} onConnectedChange={() => {}} />} />
+        <Route path="/p/:projectEncoded" element={<Navigate to="resources" replace />} />
+        <Route path="/p/:projectEncoded/:tab" element={<ProjectPage sessions={sessions} />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </AppShell>
   )
 }
