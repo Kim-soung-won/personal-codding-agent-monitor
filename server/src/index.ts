@@ -10,15 +10,8 @@ import { scanSessions } from './scanner/index.js'
 import { startWatcher } from './watcher/index.js'
 import { JsonlEventParser } from './parser/index.js'
 import { createAuthMiddleware, isWsAuthorized } from './middleware/auth.js'
-import { createSyncRouter } from './routes/sync.js'
-import { createStatsRouter } from './routes/stats.js'
-import { createDbSessionsRouter } from './routes/db-sessions.js'
-import { createDbMetaRouter } from './routes/db-meta.js'
-import { createDb } from './db/client.js'
-import { KyselySessionRepository } from './repositories/session-repository.js'
-import { KyselyEventRepository } from './repositories/event-repository.js'
-import { KyselyStatsRepository } from './repositories/stats-repository.js'
-import { KyselyMetaRepository } from './repositories/meta-repository.js'
+import { createAgentFactoryRouter } from './agent-factory/routes.js'
+import { prisma } from './db/prisma.js'
 import { aggregateUsageByModel, collectUsage } from '../../shared/pricing.js'
 import type { EventOrigin, NormalizedEvent } from './types.js'
 
@@ -31,7 +24,6 @@ if (existsSync('.env')) {
 // ─── 환경 설정 ──────────────────────────────────────────────────────────────
 // 모두 미설정 시 기존 로컬 dev 동작과 동일(단, AUTH_TOKEN 은 필수 — 아래 부팅 검사 참조).
 const DATA_DIR = process.env.CLAUDE_DATA_DIR ?? join(homedir(), '.claude', 'projects')
-const DB_PATH = process.env.DB_PATH ?? join(DATA_DIR, 'observer.db')
 const PORT = Number(process.env.PORT) || 3001
 const HOST = process.env.HOST ?? '0.0.0.0'
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? '*'
@@ -47,31 +39,29 @@ if (!AUTH_TOKEN) {
   process.exit(1)
 }
 
-const parser = new JsonlEventParser()
+// 스키마 적용은 배포 단계의 `prisma migrate deploy` 책임이다. 서버는 마이그레이션을
+// 실행하지 않는다 — 여러 인스턴스가 동시에 뜨면 DDL 이 경합하기 때문이다.
+if (!process.env.DATABASE_URL) {
+  console.error(
+    '[server] DATABASE_URL 환경변수가 설정되지 않았습니다. ' +
+      '.env 에 Postgres 접속 문자열을 지정한 뒤 다시 실행하세요.',
+  )
+  process.exit(1)
+}
 
-// DB 초기화 — migrate 가 리스닝 전에 완료되도록 부팅 초반에 수행.
-// 마이그레이션 실패 시 예외로 부팅이 중단돼 스키마 불일치 상태로 뜨지 않는다.
-const db = createDb(DB_PATH)
-const sessionRepo = new KyselySessionRepository(db)
-const eventRepo = new KyselyEventRepository(db)
-const statsRepo = new KyselyStatsRepository(db)
-const metaRepo = new KyselyMetaRepository(db)
+const parser = new JsonlEventParser()
 
 const app = express()
 
 app.use(cors({ origin: ALLOWED_ORIGIN }))
-app.use(express.json())
+// 기록 1건이 수 KB 이고 훅이 배치로 밀 수 있어 기본 100kb 로는 모자란다.
+app.use(express.json({ limit: '10mb' }))
 
 // /api 전체를 토큰 인증으로 보호(정적 페이지 없음이므로 전역 적용 가능)
 app.use('/api', createAuthMiddleware(AUTH_TOKEN))
 
-// 로컬 sync 잡의 업로드 엔드포인트(파일 저장 + DB ingest)
-app.use('/api/sync', createSyncRouter(DATA_DIR, { db }))
-
-// DB 기반 신규 엔드포인트 (기존 /api/sessions* 파일 기반과 분리, 점진 전환)
-app.use('/api/stats', createStatsRouter(statsRepo))
-app.use('/api/db', createDbMetaRouter(metaRepo))
-app.use('/api/db/sessions', createDbSessionsRouter(sessionRepo, eventRepo))
+// 커밋 단위 기록 — 이 제품의 본체. agent-factory-plugin 훅이 여기로 밀어넣는다.
+app.use('/api/agent-factory', createAgentFactoryRouter(prisma))
 
 const httpServer = createServer(app)
 const wss = new WebSocketServer({ server: httpServer })

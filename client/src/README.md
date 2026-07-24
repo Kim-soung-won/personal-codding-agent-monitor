@@ -48,8 +48,14 @@ VITE_API_BASE=https://... VITE_WS_URL=wss://... npm run build
 미설정 시 localhost:3001 폴백
 ```
 
-## Phase 2b (예정)
+## 두 갈래의 데이터원
 
-서버 `/api/stats/*`, `/api/db/sessions*` 는 준비 완료. 남은 작업:
-`lib/statsApi.ts` + 훅으로 소비 → 리소스/플러그인 평가 뷰, sub-agent 통계, 날짜·유저 필터.
-현재 `GlobalAnalytics` 는 세션 이벤트를 클라이언트에서 직접 집계 → 서버 집계로 전환 대상.
+이 클라이언트는 성격이 다른 두 API 를 함께 쓴다. 화면을 고칠 때 어느 쪽인지 먼저 본다.
+
+| 데이터원 | 소비처 | 성격 |
+|----------|--------|------|
+| `/api/agent-factory/*` (Postgres) | `pages/CommitRecordsPage`, `pages/CommitRecordDetailPage` · `lib/agentFactoryApi.ts` | **제품 본체.** 커밋 단위로 축적된 기록. 어디서 접속하든 보인다 |
+| `/api/sessions*` (로컬 파일 스캔) | `TokenDashboard` · `ResourcesPanel` · `GlobalAnalytics` · 세션/프로젝트 뷰 | 로컬 `~/.claude` 를 직접 읽는 실시간 뷰. **클라우드에서는 비어 있다** |
+
+후자는 클라이언트에서 직접 집계한다(`@shared/pricing`, `@shared/resource-extract`).
+서버가 원본 JSONL 을 더는 보관하지 않으므로 서버 집계로 옮길 대상이 아니다.

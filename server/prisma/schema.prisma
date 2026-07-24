@@ -1,0 +1,261 @@
+// Claude Code Observer — 커밋 단위 에이전트 사용 기록 스키마
+//
+// 그레인(grain): agent-factory-plugin 이 남기는 `.agent-factory/sessions/<sha>.md`
+// **한 파일 = CommitRecord 한 행**. 즉 "커밋 하나의 세션 델타 구간"이 이 제품의 최소
+// 관측 단위다. 세션 전체도, JSONL 이벤트 한 줄도 아니다.
+//
+// 설계 전제
+//  1. 원본 무손실: 파싱 결과와 별개로 rawMarkdown 에 .md 전문을 항상 보관한다.
+//     구조화 컬럼은 뷰·통계를 위한 파생이며, 스키마가 바뀌면 rawMarkdown 에서 재파싱한다.
+//  2. 멱등: 훅이 같은 파일을 여러 번 밀어도 (projectId, commitSha, revision) 유니크로
+//     upsert 된다. revision 은 summarizer 의 재처리 접미사(`-r2`)에 대응한다.
+//  3. 2단계 적재: 커밋 시점엔 결정론적 계량치만 있는 CAPTURED 행이 생기고,
+//     요약이 나오면 같은 행이 SUMMARIZED 로 채워진다.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── 차원(dimension) ────────────────────────────────────────────────────────
+
+/// 작업 레포. git root 절대경로가 자연키다(로컬 경로 인코딩에 의존하지 않는다).
+model Project {
+  id        Int            @id @default(autoincrement())
+  path      String         @unique
+  name      String
+  remoteUrl String?
+  createdAt DateTime       @default(now())
+  records   CommitRecord[]
+
+  @@index([name])
+}
+
+/// 작성자. Claude JSONL 에는 신원이 없으므로 훅이 커밋 시점의 git 신원을 주입한다.
+model User {
+  id          Int            @id @default(autoincrement())
+  identifier  String         @unique // git user.email
+  displayName String?
+  createdAt   DateTime       @default(now())
+  records     CommitRecord[]
+}
+
+// ─── 팩트(fact) — 제품의 중심 ──────────────────────────────────────────────
+
+enum RecordStatus {
+  CAPTURED /// 훅이 커밋 델타를 잡았고 요약은 아직 없음
+  SUMMARIZED /// session-feedback-summarizer 가 .md 를 남김
+}
+
+model CommitRecord {
+  id String @id @default(cuid())
+
+  // ── 신원 ──
+  commitSha     String
+  commitSubject String?
+  /// summarizer 재처리 시 증가(`<sha>-r2.md`). 1 이 최초 기록.
+  revision      Int     @default(1)
+  /// Claude Code 세션 uuid. 한 세션이 여러 커밋을 낳으므로 유니크가 아니다.
+  sessionId     String
+
+  projectId Int
+  userId    Int?
+
+  // ── 계량치(훅이 결정론적으로 산출, 요약 없이도 채워짐) ──
+  capturedAt          DateTime
+  eventCount          Int      @default(0)
+  inputTokens         Int      @default(0)
+  outputTokens        Int      @default(0)
+  cacheReadTokens     Int      @default(0)
+  cacheCreationTokens Int      @default(0)
+  /// shared/pricing.ts 로 산출. 모델 단가 미상이면 null.
+  estimatedCostUsd    Decimal? @db.Decimal(12, 6)
+
+  // ── 서술(summarizer 산출) ──
+  status   RecordStatus @default(CAPTURED)
+  /// `## 요약` 본문
+  summary  String?
+  /// `## 비용 메모` 본문
+  costNote String?
+
+  // ── 원본·멱등 ──
+  /// .md 전문. 스키마 변경 시 재파싱의 근거이자 감사 원본.
+  rawMarkdown String
+  /// rawMarkdown 의 sha256. 같으면 재파싱을 건너뛴다.
+  contentHash String
+  ingestedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project          @relation(fields: [projectId], references: [id])
+  user        User?            @relation(fields: [userId], references: [id])
+  agents      RecordAgent[]
+  signals     Signal[]
+  invocations ToolInvocation[]
+  feedback    FeedbackItem[]
+
+  @@unique([projectId, commitSha, revision])
+  @@index([sessionId])
+  @@index([capturedAt])
+  @@index([projectId, capturedAt])
+  @@index([status])
+}
+
+// ─── 프론트매터 파생 — 신뢰도 높음(결정론적) ────────────────────────────────
+
+/// frontmatter `agents: [plugin:agent, ...]`. 서술이 아니라 실측이므로 통계의 기준축.
+///
+/// 토큰·비용·호출 계량치는 프론트매터가 아니라 distill 이 만든 metrics.json 사이드카에서
+/// 온다(LLM 을 거치지 않은 결정론적 값). 사이드카가 없는 기록(구버전·요약만 도착)에서는
+/// 계량 필드가 0으로 남는다 — Sub-agents/Plugins 화면은 그 점을 감안해 표시한다.
+model RecordAgent {
+  id       String @id @default(cuid())
+  recordId String
+  /// "claude-code-docs-plugin". 플러그인 밖 에이전트면 null.
+  plugin   String?
+  /// "subagent-evaluator"
+  agent    String
+  /// 이 델타에서 이 에이전트가 spawn 된 횟수. metrics.json 이 있으면 실측값(Agent
+  /// 도구 호출 카운트), 없으면 프론트매터 등장 기반 근사(기본 1).
+  spawnCount Int   @default(1)
+
+  // ── 계량치(metrics.json 사이드카 · 없으면 0) ──
+  inputTokens         Int      @default(0)
+  outputTokens        Int      @default(0)
+  cacheReadTokens     Int      @default(0)
+  cacheCreationTokens Int      @default(0)
+  estimatedCostUsd    Decimal? @db.Decimal(12, 6)
+  /// 이 에이전트가 실행한 도구 호출 수.
+  toolCalls           Int      @default(0)
+  /// 이 에이전트 실행 중 발생한 tool_result 에러 수.
+  errors              Int      @default(0)
+
+  record CommitRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@unique([recordId, plugin, agent])
+  @@index([agent])
+  @@index([plugin])
+}
+
+// ─── 본문 파생 — 감정 신호(rubric 1단계) ────────────────────────────────────
+
+enum SignalPolarity {
+  NEGATIVE
+  POSITIVE
+}
+
+/// 부정은 assistant 출력에서, 긍정은 user 입력에서만 유효하다(rubric 1단계).
+enum SignalChannel {
+  OUTPUT
+  INPUT
+}
+
+/// distill 이 사전 플래그한 건을 summarizer 가 맥락으로 재판정한 결과.
+enum SignalVerdict {
+  CONFIRMED
+  FALSE_POSITIVE
+}
+
+model Signal {
+  id       String @id @default(cuid())
+  recordId String
+
+  polarity SignalPolarity
+  channel  SignalChannel
+  verdict  SignalVerdict
+  /// 발화 참조("u22"). 없으면 null.
+  turnRef  String?
+  /// 마커가 등장한 실제 문구.
+  excerpt  String?
+  /// 부정이면 원인, 긍정이면 강화할 패턴.
+  note     String?
+
+  /// distill(결정론적 층)이 사전 플래그한 건수.
+  flaggedCount   Int?
+  /// summarizer 가 맥락으로 재판정해 살아남은 건수.
+  /// flagged - confirmed = 오탐. 감지기 정밀도 자체가 추적 대상이라 둘 다 남긴다.
+  confirmedCount Int?
+
+  record CommitRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([recordId])
+  @@index([polarity, verdict])
+}
+
+// ─── 본문 파생 — 에이전트·도구 사용 내역 표 ─────────────────────────────────
+
+enum InvocationRowType {
+  ITEM /// 순서가 있는 개별 호출
+  AGGREGATE /// "Edit×29 · Bash×32" 처럼 묶인 집계 행(순서 없음)
+}
+
+enum ResourceKind {
+  AGENT
+  SKILL
+  MCP
+  TOOL
+}
+
+model ToolInvocation {
+  id       String @id @default(cuid())
+  recordId String
+
+  /// AGGREGATE 행은 null.
+  seq      Int?
+  rowType  InvocationRowType @default(ITEM)
+  /// "main" 또는 attributionAgent 이름.
+  actor    String
+  kind     ResourceKind?
+  /// "subagent-evaluator" / "Edit" / "mcp__foo__bar"
+  resource String
+  plugin   String?
+  /// 호출 대상·인자 요지.
+  target   String?
+  /// 비고("정상", "Write 권한거부").
+  note     String?
+  isError  Boolean           @default(false)
+
+  record CommitRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([recordId, seq])
+  @@index([kind, resource])
+  @@index([isError])
+}
+
+// ─── 본문 파생 — 축별 피드백(rubric 2단계) ──────────────────────────────────
+
+/// feedback-rubric.md 의 5개 축과 1:1. 축이 늘면 여기와 rubric 을 함께 고친다.
+enum FeedbackAxis {
+  DELEGATION_FIT /// 1. 위임 적절성
+  REWORK_LOOP /// 2. 재작업·정정 루프
+  TOOL_SCOPING /// 3. 도구 스코핑
+  COST /// 4. 비용
+  REPO_NORMS /// 5. 저장소 규범 준수
+}
+
+enum FeedbackVerdict {
+  GOOD
+  CONCERN
+  /// rubric 이 명령한 "digest 만으로는 판단 불가".
+  INSUFFICIENT_EVIDENCE
+}
+
+model FeedbackItem {
+  id       String @id @default(cuid())
+  recordId String
+
+  axis    FeedbackAxis
+  /// .md 에 적힌 표시 순서.
+  ordinal Int
+  body    String
+  verdict FeedbackVerdict?
+
+  record CommitRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  /// 축당 한 항목(rubric 이 축별 1문단을 규정).
+  @@unique([recordId, axis])
+  @@index([axis, verdict])
+}
