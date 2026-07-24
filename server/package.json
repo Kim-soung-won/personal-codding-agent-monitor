@@ -5,25 +5,29 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/server/src/index.js",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "db:generate": "prisma generate",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "//db:diff": "DB 사용자에게 shadow DB 생성 권한이 없어 `migrate dev`를 못 쓴다. 대신 이 스크립트로 '현재 DB → 목표 스키마' 델타 SQL을 뽑아 prisma/migrations/<timestamp>_<name>/migration.sql 로 저장한 뒤 db:deploy 한다",
+    "db:diff": "prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --script"
   },
   "dependencies": {
-    "better-sqlite3": "^11.8.1",
+    "@prisma/client": "^6.19.3",
     "chokidar": "^4.0.0",
     "cors": "^2.8.5",
     "express": "^4.18.0",
-    "kysely": "^0.27.5",
     "ws": "^8.0.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
     "@types/cors": "^2.8.0",
     "@types/express": "^4.17.0",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.0.0",
+    "prisma": "^6.19.3",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.1.7"

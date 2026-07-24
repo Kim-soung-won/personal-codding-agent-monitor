@@ -59,30 +59,31 @@ npm run build
 
 미설정 시 `http://localhost:3001` / `ws://localhost:3001` 로 폴백한다.
 
-### 3) 로컬 동기화 잡
+### 3) 데이터 적재 — agent-factory 플러그인 훅
 
-로컬 머신에서 `~/.claude` 데이터를 클라우드로 밀어 넣는다. 상세는
-[`sync/`](sync/) 참조.
+이 서버는 원본 JSONL 을 받지 않는다. 로컬에서 요약·해석까지 끝낸 커밋 기록
+`.agent-factory/sessions/<sha>.md` 한 장만 올라온다.
 
-```bash
-cd sync
-npm install
-npm run setup          # 대화형: .env 작성 + 사전 점검(claude CLI·토큰) + launchd 자동등록
-# 또는 수동: cp .env.example .env 편집 후
-npm run all            # manifest → summaries → upload 순서 (setup 없이 즉시 실행도 가능)
+적재 주체는 [`agent-factory-plugin`](../personal-plugins/plugins/agent-factory-plugin/) 이다:
+
+```
+git commit → PostToolUse hook   : 커밋 델타 캡처
+           → summarizer 에이전트 : 요약 + 5축 피드백 + 감정 신호 → <sha>.md
+           → Stop hook           : 미전송분만 POST /api/agent-factory/records
 ```
 
-`npm run setup` 은 `sync/.env` 를 작성하고, `claude` CLI 로그인·서버 토큰을 점검한 뒤,
-원하면 매일 지정 시각에 도는 launchd 에이전트를 등록한다(해제: `launchctl unload
-~/Library/LaunchAgents/com.observer.sync.plist`).
+작업 레포에서 아래 둘만 설정하면 된다(없으면 업로드 단계는 조용히 건너뛴다):
 
-- **additive-only**: 로컬에서 세션이 지워져도 클라우드에서는 삭제하지 않는다(과거 기록 보존).
-- **요약**: `generate-summaries.ts` 가 로컬에 로그인된 `claude` CLI(Claude Code, **구독 인증**)를
-  headless(`claude -p`)로 호출해 세션 제목·설명을 생성한다. **API 키 불필요** — `claude login`
-  상태이기만 하면 된다. 생성 자체가 세션을 남기므로 전용 디렉토리에서 실행하고 그 세션은 요약 대상에서 제외한다.
-- **전제**: 이 잡은 `claude` CLI 가 설치·로그인된 로컬 머신에서 실행해야 한다.
-- **스케줄**: [`sync/launchd/com.observer.sync.plist`](sync/launchd/com.observer.sync.plist)
-  (macOS) 또는 cron 으로 퇴근 시각에 `sync/run.sh` 를 실행한다.
+```bash
+export OBSERVER_API_BASE=https://observer.example.com
+export OBSERVER_TOKEN=<서버 AUTH_TOKEN 과 같은 값>
+```
+
+- **멱등**: 서버는 `(project, commitSha, revision)` 기준으로 upsert 하고, 훅은 내용
+  해시로 이미 보낸 파일을 건너뛴다. 같은 기록을 몇 번 밀어도 행이 늘지 않는다.
+- **원본 무손실**: `.md` 전문을 `rawMarkdown` 에 보관한다. 파싱 스키마가 바뀌어도
+  재파싱으로 복구할 수 있다.
+- **훅은 흐름을 막지 않는다**: 서버가 죽어 있거나 설정이 없어도 조용히 넘어가고 항상 exit 0.
 
 ---
 

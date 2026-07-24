@@ -1,51 +1,37 @@
 # `server/src/routes/` — Express 라우터
 
 모든 라우트는 `/api` 하위이며 상위에서 `app.use('/api', requireAuth)` 로 **토큰 인증**된다.
-DB 기반 신규 엔드포인트는 기존 파일 기반(`/api/sessions*`)과 **분리된 네임스페이스**에 둬서
-점진 전환한다.
 
-| 파일 | 마운트 | 역할 |
+현재 이 디렉토리에는 라우터 파일이 없다. 라우트는 두 곳에 있다:
+
+| 위치 | 마운트 | 역할 |
 |------|--------|------|
-| `sync.ts` | `/api/sync` | 로컬 잡 업로드(파일 저장 + DB ingest) |
-| `stats.ts` | `/api/stats` | 통계 조회(리소스·플러그인·sub-agent·일별토큰) |
-| `db-sessions.ts` | `/api/db/sessions` | DB 기반 세션·이벤트 조회 |
+| `../agent-factory/routes.ts` | `/api/agent-factory` | **커밋 단위 기록** — 이 제품의 본체 |
+| `../index.ts` (인라인) | `/api/sessions*` | 로컬 파일 스캔 기반 실시간 세션 뷰 |
 
-> 기존 `index.ts` 의 `/api/sessions`, `/api/sessions/:id/events`, `/api/sessions/:id/cost`
-> (파일 스캔 기반)는 **그대로 유지**. 클라이언트 전환 시점은 Phase 2b 에서 결정.
+> 구 `sync.ts`·`stats.ts`·`db-sessions.ts`·`db-meta.ts` 는 제거됐다. 원본 JSONL 을
+> 클라우드로 동기화하던 방식을 agent-factory 훅 업로드로 대체하면서 함께 걷어냈다.
+> 배경은 저장소 루트 `CLAUDE.md` 의 "기획 의도" 참조.
 
 ---
 
-## `sync.ts` — `createSyncRouter(dataDir, {db})`
+## `agent-factory/routes.ts` — `createAgentFactoryRouter(prisma)`
 
 ```
-PUT /session/:encoded/:sessionId   (body=raw jsonl)
-    validate 경로 세그먼트(../, \0 거부) + non-empty
-    atomicWrite(dataDir/encoded/sessionId.jsonl)        # ① 원본 저장(백업). 실패 시 500
-    try: ingestSessionFile(db, {..., identity: X-User-* 헤더})   # ② best-effort
-    → 200 {success:true, ingested:bool, ingestError?}   # ingest 실패해도 500 아님(원본 보존)
+POST /records                  body={records:[{markdown, fileName, projectPath, ...}]}
+     건별 멱등 upsert. 부분 실패 허용 — 한 건이 깨져도 나머지는 적재하고
+     건별 outcome(created|updated|unchanged|skipped)을 돌려준다.
+     ✱ 전부-아니면-전무로 처리하면 깨진 기록 하나가 영원히 재전송된다.
 
-PUT /subagent/:encoded/:sessionId/:agentFile  → 동일 패턴, ingestSubagentFile
-PUT /manifest                (body=JSON)      → dataDir/manifest.json (DB 무관)
-PUT /summary/:sessionId?encoded=  (body=JSON) → .summary.json + UPDATE sessions.description(best-effort)
+GET  /records                  ?projectId&userId&agent&status&from&to&page&pageSize
+     rawMarkdown 제외(건당 수 KB). pageSize 상한 100.
+GET  /records/:id              rawMarkdown 포함 상세
 
-# ✱ DELETE 라우트는 의도적으로 없음 (additive-only 방어선)
-```
-
-## `stats.ts` — `createStatsRouter(statsRepo)`
-
-```
-GET /resources    ?projectId&userId&kind&from&to   → StatsRepo.resourceCounts
-GET /plugins       ?projectId&userId&from&to        → pluginCounts
-GET /subagents     ?subagentType&projectId&userId   → subagentResourceUsage
-GET /tokens/daily  ?projectId&userId&from&to        → dailyTokens
-# 모두 {success:true, data:[...]}  (query 파싱: num()/str() 로 방어적 변환)
-```
-
-## `db-sessions.ts` — `createDbSessionsRouter(sessionRepo, eventRepo)`
-
-```
-GET /                        ?projectId&userId   → listSessions
-GET /:sessionId/events       ?includeSubagents   → listEventsForSession
+GET  /stats/agents             에이전트별 커밋 수·spawn 수
+GET  /stats/signals            극성×판정 분포 (오탐 포함 — 감지기 정밀도 추적)
+GET  /stats/feedback           축별 판정 분포
+GET  /stats/tokens/daily       일자별 토큰 (최근 90일)
+GET  /meta                     프로젝트·유저 목록(필터 드롭다운용)
 ```
 
 ---
@@ -55,5 +41,4 @@ GET /:sessionId/events       ?includeSubagents   → listEventsForSession
 ```
 성공: { success: true, data?: ... }
 실패: { success: false, error: string }   (HTTP 4xx/5xx)
-업로드: { success: true, ingested: boolean, ingestError?: string }
 ```
