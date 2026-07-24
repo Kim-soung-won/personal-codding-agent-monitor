@@ -53,7 +53,8 @@ function SignalBadges({ record }: { record: CommitRecordSummary }) {
 }
 
 export function CommitRecordsPage() {
-  const [from, setFrom] = useState(() => daysAgo(30))
+  // 기본 조회 범위는 일주일. to 는 서버에서 그날 끝(23:59:59.999)까지 포함하도록 확장된다.
+  const [from, setFrom] = useState(() => daysAgo(6))
   const [to, setTo] = useState(() => daysAgo(0))
   const [projectId, setProjectId] = useState<number | null>(null)
   const [userId, setUserId] = useState<number | null>(null)

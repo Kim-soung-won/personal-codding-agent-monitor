@@ -87,6 +87,11 @@ export function createAgentFactoryRouter(prisma: PrismaClient): Router {
 
       const from = req.query.from ? new Date(String(req.query.from)) : null
       const to = req.query.to ? new Date(String(req.query.to)) : null
+      // to 는 날짜(YYYY-MM-DD)로 오므로 자정으로 파싱된다. 당일 기록까지 포함하려면
+      // 그날 끝(23:59:59.999)으로 밀어야 한다 — 안 그러면 당일 00:00:00 이후분이 전부 잘린다.
+      if (to && !Number.isNaN(to.getTime())) {
+        to.setHours(23, 59, 59, 999)
+      }
       if ((from && !Number.isNaN(from.getTime())) || (to && !Number.isNaN(to.getTime()))) {
         where.capturedAt = {
           ...(from && !Number.isNaN(from.getTime()) ? { gte: from } : {}),
