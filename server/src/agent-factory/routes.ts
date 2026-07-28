@@ -148,6 +148,7 @@ export function createAgentFactoryRouter(prisma: PrismaClient): Router {
           signals: true,
           invocations: { orderBy: [{ seq: 'asc' }] },
           feedback: { orderBy: { ordinal: 'asc' } },
+          sessionHygiene: true,
         },
       })
       if (!record) {

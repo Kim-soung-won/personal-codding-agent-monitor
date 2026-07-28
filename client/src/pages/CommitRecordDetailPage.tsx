@@ -9,7 +9,14 @@ import {
   type CommitRecordDetail,
   type FeedbackVerdict,
   type InvocationRow,
+  type SessionHygiene,
+  type ToolResultSpike,
 } from '../types/agentFactory'
+
+// 안티패턴 경고 임계치. 커밋 델타 규모에 맞춘 경험값 — 넘으면 주의로 표시한다.
+const SLOPE_WARN = 40000
+const JUMP_WARN = 20000
+const CR_RATIO_WARN = 50
 
 const VERDICT_STYLE: Record<FeedbackVerdict, string> = {
   GOOD: 'bg-success/10 text-success',
@@ -48,6 +55,102 @@ function InvocationCell({ row }: { row: InvocationRow }) {
       )}
       <span className="font-mono text-xs">{row.resource}</span>
     </span>
+  )
+}
+
+/** null 은 "산출 불가"(0 과 구별). 그 외엔 천단위 구분 + 접미사. */
+function fmtHyg(n: number | null, suffix = ''): string {
+  if (n == null) return '산출 불가'
+  return n.toLocaleString() + suffix
+}
+
+/** 세션 위생(COST 축) — 컨텍스트 누적·재청구 안티패턴 신호. */
+function SessionHygieneSection({ h }: { h: SessionHygiene }) {
+  // 가장 강한 신호: 리셋 없이 컨텍스트가 단조 누적(기울기 큼 + 리셋 0).
+  const monotonicCreep =
+    h.contextSlope != null && h.contextSlope >= SLOPE_WARN && h.sessionResets === 0
+  const bigTurnJump = h.maxTurnContextJump != null && h.maxTurnContextJump >= JUMP_WARN
+  const highReclaimTax = h.crGenRatio != null && h.crGenRatio >= CR_RATIO_WARN
+
+  const spikes: ToolResultSpike[] = Array.isArray(h.toolResultSpikes) ? h.toolResultSpikes : []
+  const sortedSpikes = [...spikes].sort((a, b) => b.len - a.len)
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-4 mb-4">
+      <h2 className="text-sm font-medium mb-1">세션 위생</h2>
+      <p className="text-2xs text-muted-foreground mb-3">
+        비용(COST) 축 — 컨텍스트가 리셋 없이 쌓이거나 재청구되는 안티패턴 신호
+      </p>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+        <StatCard
+          label="context 기울기"
+          value={fmtHyg(h.contextSlope)}
+          sub={`커밋당 증가 · 샘플 ${fmtHyg(h.contextSamples)}`}
+          tone={monotonicCreep ? 'bad' : 'default'}
+        />
+        <StatCard
+          label="세션 리셋"
+          value={fmtHyg(h.sessionResets)}
+          sub="compact/clear 누적"
+          tone={h.sessionResets === 0 && monotonicCreep ? 'warn' : 'default'}
+        />
+        <StatCard
+          label="턴 급증폭"
+          value={fmtHyg(h.maxTurnContextJump)}
+          sub="단일 턴 최대 증가"
+          tone={bigTurnJump ? 'warn' : 'default'}
+        />
+        <StatCard
+          label="재청구 비율"
+          value={h.crGenRatio == null ? '산출 불가' : `${h.crGenRatio.toFixed(1)}%`}
+          sub="cache write / read"
+          tone={highReclaimTax ? 'warn' : 'default'}
+        />
+      </div>
+
+      <div className="space-y-2">
+        {monotonicCreep && (
+          <div className="rounded-lg px-3 py-2 text-xs bg-destructive/5 border border-destructive/20">
+            <p className="font-medium">🔴 리셋 없이 컨텍스트 단조 누적</p>
+            <p className="text-muted-foreground leading-relaxed">
+              기울기 {fmtHyg(h.contextSlope)}/커밋인데 세션 리셋이 0회 — 가장 강한 위생 경고.
+              중간에 compact/clear 로 컨텍스트를 끊어줄 지점을 검토하세요.
+            </p>
+          </div>
+        )}
+        {bigTurnJump && (
+          <div className="rounded-lg px-3 py-2 text-xs bg-warning/5 border border-warning/20">
+            <p className="font-medium">🟡 단일 턴 대용량 덤프</p>
+            <p className="text-muted-foreground leading-relaxed">
+              한 턴에서 컨텍스트가 {fmtHyg(h.maxTurnContextJump)} 토큰 급증 — 대용량 read
+              등이 컨텍스트로 끌려들어온 신호.
+            </p>
+          </div>
+        )}
+        {highReclaimTax && (
+          <div className="rounded-lg px-3 py-2 text-xs bg-warning/5 border border-warning/20">
+            <p className="font-medium">🟡 재청구 컨텍스트 세(稅) 과반</p>
+            <p className="text-muted-foreground leading-relaxed">
+              재청구 비율 {h.crGenRatio?.toFixed(1)}% (샘플 {fmtHyg(h.contextSamples)}건 기준).
+              비율 자체는 병이 아니며 세션 길이와 함께 봐야 합니다.
+            </p>
+          </div>
+        )}
+        {sortedSpikes.length > 0 && (
+          <div className="rounded-lg px-3 py-2 text-xs bg-muted/40 border border-border">
+            <p className="font-medium mb-1">tool_result 스파이크 (이후 턴 재청구)</p>
+            <ul className="space-y-0.5">
+              {sortedSpikes.map((s, i) => (
+                <li key={i} className="font-mono text-2xs text-muted-foreground tabular-nums">
+                  {s.len.toLocaleString()} chars
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -227,6 +330,8 @@ export function CommitRecordDetailPage() {
           </div>
         </section>
       )}
+
+      {record.sessionHygiene && <SessionHygieneSection h={record.sessionHygiene} />}
 
       {record.costNote && (
         <section className="rounded-xl border border-border bg-card p-4 mb-4">

@@ -96,6 +96,7 @@ model CommitRecord {
   signals     Signal[]
   invocations ToolInvocation[]
   feedback    FeedbackItem[]
+  sessionHygiene SessionHygiene?
 
   @@unique([projectId, commitSha, revision])
   @@index([sessionId])
@@ -258,4 +259,47 @@ model FeedbackItem {
   /// 축당 한 항목(rubric 이 축별 1문단을 규정).
   @@unique([recordId, axis])
   @@index([axis, verdict])
+}
+
+// ─── 계량치 파생 — 세션 위생(distill metrics.json 의 session_hygiene) ─────────
+
+/// 커밋 델타의 컨텍스트 위생 신호. distill 이 만든 metrics.json 의 session_hygiene
+/// 블록에서 결정론적으로 온다(LLM 을 거치지 않음). CommitRecord 와 1:1.
+///
+/// 모든 컬럼이 nullable 인 것은 의도다 — null 은 "산출 불가"(샘플<2, cache_creation=0,
+/// 세션 누적 저장 실패)를 뜻하며 0 과 구별해야 한다. 어떤 층에서도 null 을 0 으로
+/// 뭉개지 않는다. 사이드카가 없거나 이 블록이 없는 구버전 기록에서는 행 자체가 없다.
+model SessionHygiene {
+  id       String @id @default(cuid())
+  recordId String @unique
+
+  // ── 델타 스코프(이 커밋 구간만) ──
+  /// 이 델타에서 재사용된 캐시 컨텍스트 토큰.
+  cacheRead     Int?
+  /// 이 델타에서 새로 생성(재청구)된 캐시 컨텍스트 토큰.
+  cacheCreation Int?
+  /// cache_creation / cache_read 비율(%). cache_creation=0 이면 null.
+  crGenRatio    Float?
+  /// 델타 내 최대 tool_result 길이.
+  maxToolResultLen Int?
+  /// 이후 턴 내내 재청구된 대용량 tool_result 목록 `[{ len }]`(최대 10건). 배열이라 Json.
+  toolResultSpikes Json?
+  /// 턴 컨텍스트(input+cache_read) 최댓값.
+  maxTurnContext     Int?
+  /// 인접 턴 컨텍스트 최대 증가폭(단일 턴 급증).
+  maxTurnContextJump Int?
+  /// 이 델타에서 compact/clear 발생 여부.
+  deltaShrank        Boolean?
+
+  // ── 세션 누적 스코프(커밋 간 증분 복원) ──
+  /// 이 커밋 시점 컨텍스트 크기.
+  contextSizeSample Int?
+  /// 세션 누적 리셋 횟수(monotonic).
+  sessionResets     Int?
+  /// 커밋당 컨텍스트 증가량(회귀 기울기).
+  contextSlope      Float?
+  /// 기울기 산출에 쓴 샘플 수.
+  contextSamples    Int?
+
+  record CommitRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
 }

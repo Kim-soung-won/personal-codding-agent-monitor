@@ -75,6 +75,29 @@ export interface FeedbackRow {
   verdict: FeedbackVerdict | null
 }
 
+export interface ToolResultSpike {
+  len: number
+}
+
+/**
+ * 세션 위생 계량치(서버 SessionHygiene 모델 미러).
+ * 전 필드 nullable — null 은 "산출 불가"(0 과 구별). ?? 0 으로 뭉개지 않는다.
+ */
+export interface SessionHygiene {
+  cacheRead: number | null
+  cacheCreation: number | null
+  crGenRatio: number | null
+  maxToolResultLen: number | null
+  toolResultSpikes: ToolResultSpike[] | null
+  maxTurnContext: number | null
+  maxTurnContextJump: number | null
+  deltaShrank: boolean | null
+  contextSizeSample: number | null
+  sessionResets: number | null
+  contextSlope: number | null
+  contextSamples: number | null
+}
+
 /** 목록 행 — rawMarkdown 을 뺀 경량 표현. */
 export interface CommitRecordSummary {
   id: string
@@ -103,6 +126,7 @@ export interface CommitRecordDetail extends Omit<CommitRecordSummary, '_count' |
   signals: SignalRow[]
   invocations: InvocationRow[]
   feedback: FeedbackRow[]
+  sessionHygiene: SessionHygiene | null
 }
 
 export interface RecordPage {
