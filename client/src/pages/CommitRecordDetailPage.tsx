@@ -206,6 +206,14 @@ function SessionHygieneSection({ h }: { h: SessionHygiene }) {
                         style={{ width: `${pct}%` }}
                       />
                     </div>
+                    {/* 원인 라벨 — 무슨 도구가 무엇을 대상으로 만든 결과인지(있을 때만) */}
+                    {s.tool && (
+                      <span className="shrink-0 max-w-[40%] truncate font-mono text-2xs text-foreground/80">
+                        {s.tool === "user_input" ? "사용자 입력" : s.tool}
+                        {s.target ? ` ${s.target}` : ""}
+                        {typeof s.turn === "number" ? ` · t${s.turn}` : ""}
+                      </span>
+                    )}
                     <span className="shrink-0 text-2xs tabular-nums">
                       {hasRebill ? (
                         <>

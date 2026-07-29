@@ -89,6 +89,13 @@ export interface ToolResultSpike {
   turns_resident?: number
   /** 재청구 추정 토큰(글자÷4 × 잔류 턴). 구버전 metrics 엔 없음 → len 기반 폴백. */
   rebilled_tokens?: number
+  // 원인 라벨(distill 이 tool_use_id 로 귀속). 컨텍스트 급상승의 정체 — 있을 때만.
+  /** 이 결과가 컨텍스트에 반영돼 급상승으로 나타나는 assistant 턴. */
+  turn?: number
+  /** 원인 도구(예: Read, Bash, Agent). */
+  tool?: string
+  /** 원인 대상(예: 파일명·명령 요약). */
+  target?: string
 }
 
 /**
