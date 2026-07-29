@@ -1,11 +1,43 @@
 import { useState, useMemo } from 'react'
 import { cn } from '../lib/utils'
+import { compactTokens } from '../lib/format'
 import { BADGE_COLORS } from '../lib/categories'
 import { CategoryBadge } from './CategoryBadge'
 import { OriginBadge } from './OriginBadge'
 import { SessionSummaryCard } from './SessionSummaryCard'
 import { DiffView } from './DiffView'
 import type { NormalizedEvent, EventCategory } from '../types/events'
+
+/** 한 assistant 응답의 토큰 usage. thinking·tool·text 여러 row가 같은 message.id로 공유한다. */
+interface RowUsage {
+  input: number
+  cacheCreation: number
+  cacheRead: number
+  output: number
+  total: number
+  messageId: string
+}
+
+/** assistant 이벤트의 raw.message.usage 를 추출한다. usage 없으면 null. */
+function extractUsage(event: NormalizedEvent): RowUsage | null {
+  const raw = event.raw as Record<string, unknown>
+  if (raw.type !== 'assistant') return null
+  const msg = raw.message as { id?: string; usage?: Record<string, number> } | undefined
+  const u = msg?.usage
+  if (!u) return null
+  const input = Number(u.input_tokens ?? 0)
+  const cacheCreation = Number(u.cache_creation_input_tokens ?? 0)
+  const cacheRead = Number(u.cache_read_input_tokens ?? 0)
+  const output = Number(u.output_tokens ?? 0)
+  return {
+    input,
+    cacheCreation,
+    cacheRead,
+    output,
+    total: input + cacheCreation + cacheRead + output,
+    messageId: String(msg?.id ?? event.id),
+  }
+}
 
 type ViewerCategory = Extract<
   EventCategory,
@@ -30,6 +62,21 @@ export function ThinkingViewer({ events }: Props) {
     () => events.filter((e) => e.origin === 'subagent').length,
     [events],
   )
+
+  // 응답 단위(message.id)로 집계를 표시할 대표 row 를 정한다. events 는 시간 오름차순이고
+  // JSONL 은 thinking➜text➜tool-use 순서라, 매 등장마다 덮어써 '마지막 행'(주로 도구 호출)을
+  // 대표로 삼는다. 같은 응답의 row 들이 usage 를 중복 표시하지 않도록 대표에만 붙인다.
+  const chipRowByMsg = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const ev of events) {
+      const u = extractUsage(ev)
+      if (!u) continue
+      m.set(u.messageId, ev.id)
+    }
+    return m
+  }, [events])
+
+  const hasUsage = chipRowByMsg.size > 0
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
@@ -113,12 +160,20 @@ export function ThinkingViewer({ events }: Props) {
         <span className="ml-auto text-xs text-muted-foreground">{filtered.length}개</span>
       </div>
 
+      {hasUsage && (
+        <p className="text-2xs text-muted-foreground -mt-1">
+          토큰은 응답 단위로 집계됩니다 — 한 응답의 thinking·text·도구 호출 중 마지막 행(↑입력 ↓출력)에 표시됩니다.
+        </p>
+      )}
+
       <div className="space-y-1.5">
         {filtered.length === 0 && (
           <p className="text-sm text-muted-foreground py-12 text-center">표시할 이벤트 없음</p>
         )}
         {filtered.slice().reverse().map((ev) => {
           const diffData = getDiffData(ev)
+          const usage = extractUsage(ev)
+          const showUsage = usage != null && chipRowByMsg.get(usage.messageId) === ev.id
           return (
             <div key={ev.id} className="border rounded overflow-hidden">
               <button
@@ -131,6 +186,16 @@ export function ThinkingViewer({ events }: Props) {
                 <CategoryBadge category={ev.category} />
                 <OriginBadge origin={ev.origin} agentId={ev.agentId} />
                 <span className="flex-1 text-sm truncate text-foreground/80">{ev.summary}</span>
+                {showUsage && usage && (
+                  <span
+                    className="text-2xs font-mono tabular-nums text-muted-foreground shrink-0 mt-0.5"
+                    title={`이 응답 토큰 · 입력측 ${(usage.input + usage.cacheCreation + usage.cacheRead).toLocaleString()} / 출력 ${usage.output.toLocaleString()}`}
+                  >
+                    ↑{compactTokens(usage.input + usage.cacheCreation + usage.cacheRead)}
+                    {' '}
+                    <span className="text-foreground/70">↓{compactTokens(usage.output)}</span>
+                  </span>
+                )}
                 {diffData && (
                   <button
                     onClick={(e) => { e.stopPropagation(); toggleDiff(ev.id) }}
@@ -150,6 +215,16 @@ export function ThinkingViewer({ events }: Props) {
               )}
               {expanded.has(ev.id) && (
                 <div className="border-t bg-muted/20 px-3 py-3 max-h-96 overflow-y-auto">
+                  {showUsage && usage && (
+                    <div className="mb-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs font-mono tabular-nums border-b border-border/60 pb-2">
+                      <span className="text-muted-foreground uppercase tracking-wide">이 응답 토큰</span>
+                      <span><span className="text-muted-foreground">신규입력</span> {compactTokens(usage.input)}</span>
+                      <span><span className="text-muted-foreground">캐시생성</span> {compactTokens(usage.cacheCreation)}</span>
+                      <span><span className="text-muted-foreground">캐시읽기</span> {compactTokens(usage.cacheRead)}</span>
+                      <span><span className="text-muted-foreground">출력</span> <span className="text-foreground/80">{compactTokens(usage.output)}</span></span>
+                      <span className="ml-auto"><span className="text-muted-foreground">합계</span> {compactTokens(usage.total)}</span>
+                    </div>
+                  )}
                   <pre className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed">
                     {extractContent(ev)}
                   </pre>
@@ -163,12 +238,23 @@ export function ThinkingViewer({ events }: Props) {
   )
 }
 
+/**
+ * Claude Code 메시지의 content 는 블록 배열 또는 단순 문자열 둘 다로 올 수 있다.
+ * (특히 user 메시지 텍스트는 문자열인 경우가 흔하다.) 항상 블록 배열로 정규화한다 —
+ * 문자열이면 text 블록 하나로 감싼다. `?? []` 만으로는 문자열을 못 걸러 .filter 등에서 터진다.
+ */
+function contentBlocks<T>(content: T[] | string | undefined | null): T[] {
+  if (Array.isArray(content)) return content
+  if (typeof content === 'string') return [{ type: 'text', text: content } as T]
+  return []
+}
+
 function getDiffData(event: NormalizedEvent): { old: string; new: string } | null {
   const raw = event.raw as Record<string, unknown>
   if (raw.type !== 'assistant') return null
 
-  const msg = raw.message as { content?: Array<Record<string, unknown>> } | undefined
-  for (const item of msg?.content ?? []) {
+  const msg = raw.message as { content?: Array<Record<string, unknown>> | string } | undefined
+  for (const item of contentBlocks(msg?.content)) {
     if (item.type !== 'tool_use') continue
     if (item.name !== 'Edit' && item.name !== 'Write') continue
     const input = item.input as Record<string, unknown> | undefined
@@ -185,8 +271,8 @@ function extractContent(event: NormalizedEvent): string {
   const raw = event.raw as Record<string, unknown>
 
   if (raw.type === 'user') {
-    const msg = raw.message as { content?: Array<{ type: string; text?: string }> } | undefined
-    return (msg?.content ?? [])
+    const msg = raw.message as { content?: Array<{ type: string; text?: string }> | string } | undefined
+    return contentBlocks(msg?.content)
       .filter((c) => c.type === 'text')
       .map((c) => c.text ?? '')
       .join('\n\n')
@@ -200,10 +286,10 @@ function extractContent(event: NormalizedEvent): string {
         name?: string
         input?: unknown
         text?: string
-      }>
+      }> | string
     } | undefined
     const parts: string[] = []
-    for (const item of msg?.content ?? []) {
+    for (const item of contentBlocks(msg?.content)) {
       if (item.type === 'thinking' && item.thinking) {
         parts.push(`[thinking]\n${item.thinking}`)
       } else if (item.type === 'tool_use' && item.name) {
