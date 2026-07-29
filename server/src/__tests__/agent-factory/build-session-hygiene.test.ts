@@ -24,6 +24,8 @@ describe('buildSessionHygiene', () => {
       session_resets: 0,
       context_slope: 70000,
       context_samples: 3,
+      context_series: [[1, 12000], [2, 24000], [3, 36000]],
+      assistant_turns: 3,
     }
     expect(buildSessionHygiene('rec1', h)).toMatchObject({
       recordId: 'rec1',
@@ -39,7 +41,18 @@ describe('buildSessionHygiene', () => {
       sessionResets: 0,
       contextSlope: 70000,
       contextSamples: 3,
+      contextSeries: [[1, 12000], [2, 24000], [3, 36000]],
+      assistantTurns: 3,
     })
+  })
+
+  it('context_series 가 배열이 아니면 저장하지 않는다(방어적)', () => {
+    const row = buildSessionHygiene('rec1', {
+      cache_read: 100,
+      // @ts-expect-error 잘못된 형태 방어 검증
+      context_series: 'not-an-array',
+    })!
+    expect(row.contextSeries).toBeUndefined()
   })
 
   it('null 과 0 을 구별해 보존한다(?? 0 으로 뭉개지 않음)', () => {

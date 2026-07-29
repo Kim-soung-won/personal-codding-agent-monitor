@@ -292,6 +292,12 @@ model SessionHygiene {
   maxTurnContextJump Int?
   /// 이 델타에서 compact/clear 발생 여부.
   deltaShrank        Boolean?
+  /// 턴별 컨텍스트 크기 시계열 `[[turnIndex, ctx], ...]`(다운샘플 없이 전량, 방어 상한만).
+  /// 컨텍스트가 언제 부풀었는지(초과 비용 시점)를 그대로 담아 상세화면 스파크라인의 입력이 된다.
+  /// 구버전 기록엔 없어 null. 배열이라 Json.
+  contextSeries      Json?
+  /// 델타 내 총 assistant 턴 수(= API 호출 수). "avg ctx × calls" 공식의 calls.
+  assistantTurns     Int?
 
   // ── 세션 누적 스코프(커밋 간 증분 복원) ──
   /// 이 커밋 시점 컨텍스트 크기.

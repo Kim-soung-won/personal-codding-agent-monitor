@@ -40,6 +40,14 @@ export interface RecordAgentRow {
   plugin: string | null
   agent: string
   spawnCount: number
+  // 아래는 상세 조회에서만 채워진다(목록 API 는 위 3필드만 select). 계량치가 없던
+  // 구버전 기록·목록 응답에서는 undefined 일 수 있어 옵셔널로 둔다.
+  inputTokens?: number
+  outputTokens?: number
+  cacheReadTokens?: number
+  cacheCreationTokens?: number
+  toolCalls?: number
+  errors?: number
 }
 
 export interface SignalRow {
@@ -100,6 +108,10 @@ export interface SessionHygiene {
   sessionResets: number | null
   contextSlope: number | null
   contextSamples: number | null
+  // 턴별 컨텍스트 시계열 `[turnIndex, ctx]`(전량). 구버전 기록엔 없어 null.
+  contextSeries: Array<[number, number]> | null
+  // 델타 내 총 assistant 턴 수(= API 호출 수).
+  assistantTurns: number | null
 }
 
 /** 목록 행 — rawMarkdown 을 뺀 경량 표현. */

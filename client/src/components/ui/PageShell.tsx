@@ -13,10 +13,10 @@ interface Props {
 export function PageShell({ title, subtitle, actions, toolbar, children }: Props) {
   return (
     <div className="flex flex-col h-full min-h-0">
-      <header className="shrink-0 flex items-center gap-3 px-4 border-b border-border h-12">
+      <header className="shrink-0 flex items-center gap-3 px-4 border-b border-border h-14">
         <div className="min-w-0 flex-1">
-          <h1 className="text-sm font-semibold truncate">{title}</h1>
-          {subtitle && <p className="text-2xs text-muted-foreground truncate">{subtitle}</p>}
+          <h1 className="text-lg font-semibold truncate leading-tight">{title}</h1>
+          {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
         </div>
         {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
       </header>

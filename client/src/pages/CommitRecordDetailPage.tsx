@@ -2,13 +2,22 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PageShell } from "../components/ui/PageShell";
 import { StatCard } from "../components/ui/StatCard";
+import { Prose } from "../components/ui/Prose";
+import { CacheReuseCard } from "../components/ui/CacheReuseCard";
 import { cn } from "../lib/utils";
+import {
+  compactTokens,
+  contextReuseRate,
+  estimateCostUsd,
+  fmtUsd,
+} from "../lib/format";
 import * as api from "../lib/agentFactoryApi";
 import {
   AXIS_LABEL,
   type CommitRecordDetail,
   type FeedbackVerdict,
   type InvocationRow,
+  type RecordAgentRow,
   type SessionHygiene,
   type ToolResultSpike,
 } from "../types/agentFactory";
@@ -45,16 +54,20 @@ function InvocationCell({ row }: { row: InvocationRow }) {
       </span>
     );
   }
+  // 내장 Agent 도구 호출은 kind 가 TOOL 로 잡혀 서브에이전트가 표에서 묻힌다 —
+  // resource 가 Agent 면 AGENT 로 승격해 눈에 띄게 한다.
+  const isSpawn = row.resource === "Agent";
+  const badgeKind = isSpawn ? "AGENT" : row.kind;
   return (
     <span className="flex items-center gap-1.5">
-      {row.kind && (
+      {badgeKind && (
         <span
           className={cn(
             "text-2xs px-1.5 py-0.5 rounded font-semibold",
-            KIND_STYLE[row.kind] ?? KIND_STYLE.TOOL,
+            KIND_STYLE[badgeKind] ?? KIND_STYLE.TOOL,
           )}
         >
-          {row.kind}
+          {badgeKind}
         </span>
       )}
       <span className="font-mono text-xs">{row.resource}</span>
@@ -99,7 +112,7 @@ function SessionHygieneSection({ h }: { h: SessionHygiene }) {
 
   return (
     <section className="rounded-xl border border-border bg-card p-4 mb-4">
-      <h2 className="text-sm font-medium mb-1">세션 위생</h2>
+      <h2 className="text-base font-semibold mb-1">세션 위생</h2>
       <p className="text-2xs text-muted-foreground mb-3">
         비용(COST) 축 — 컨텍스트가 리셋 없이 쌓이거나 재청구되는 안티패턴 신호
       </p>
@@ -108,32 +121,28 @@ function SessionHygieneSection({ h }: { h: SessionHygiene }) {
         <StatCard
           label="context 기울기"
           value={fmtHyg(h.contextSlope)}
-          sub={`커밋당 증가 · 샘플 ${fmtHyg(h.contextSamples)}`}
+          sub="커밋마다 붙는 평균 토큰 · 클수록 세션이 무거워짐"
           tone={monotonicCreep ? "bad" : "default"}
-          hint="커밋을 하나 만들 때마다 대화 컨텍스트가 평균 몇 토큰씩 불어나는지. 값이 클수록 세션이 무거워져 비용과 응답 지연이 함께 커진다. 중간에 컨텍스트를 정리하지 않으면 계속 쌓인다."
         />
         <StatCard
           label="세션 리셋"
           value={fmtHyg(h.sessionResets)}
-          sub="compact/clear 누적"
+          sub="compact/clear 로 끊은 횟수 · 0이면 한 번도 안 정리"
           tone={h.sessionResets === 0 && monotonicCreep ? "warn" : "default"}
-          hint="이 세션에서 /compact·/clear 로 컨텍스트를 끊어낸 누적 횟수. 0이면 세션 내내 한 번도 정리하지 않았다는 뜻이다. 기울기가 큰데 이 값이 0이면 가장 강한 경고다."
         />
         <StatCard
           label="턴 급증폭"
           value={fmtHyg(h.maxTurnContextJump)}
-          sub="단일 턴 최대 증가"
+          sub="한 턴에서 가장 크게 뛴 폭 · 대용량 덤프 신호"
           tone={bigTurnJump ? "warn" : "default"}
-          hint="한 번의 턴에서 컨텍스트가 가장 크게 뛴 폭. 대용량 파일 읽기나 긴 도구 결과 하나가 이후 모든 턴에 얹혀 반복 청구되는 신호다. 클수록 그 덤프의 뒷비용이 크다."
         />
         <StatCard
           label="재청구 비율"
           value={
             h.crGenRatio == null ? "산출 불가" : `${h.crGenRatio.toFixed(1)}%`
           }
-          sub="cache write / read"
+          sub="매 턴 새로 써넣은 컨텍스트 비율 · 세션 길이와 함께 볼 것"
           tone={highReclaimTax ? "warn" : "default"}
-          hint="재사용된 컨텍스트(cache read) 대비 매 턴 새로 캐시에 써넣은 컨텍스트(cache write)의 비율. 높을수록 컨텍스트를 다시 만들어 청구되는 몫이 크다. 다만 세션 길이와 함께 봐야 하며 비율 자체가 병은 아니다."
         />
       </div>
 
@@ -229,6 +238,112 @@ function SessionHygieneSection({ h }: { h: SessionHygiene }) {
   );
 }
 
+/** 한 서브에이전트의 계량치 한 줄 지표. */
+function AgentMetric({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "bad";
+}) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      <span
+        className={cn(
+          "text-sm font-semibold tabular-nums",
+          tone === "bad" ? "text-destructive" : "text-foreground",
+        )}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * 서브에이전트 사용 상세 — 이 커밋 델타에서 부른 에이전트별 계량치.
+ * 도구 사용 표(Agent 호출이 TOOL 로 묻힘)와 달리, "이 에이전트가 값을 했나"를
+ * spawn·토큰·비용·도구·오류로 드러낸다.
+ */
+function SubAgentsSection({ agents }: { agents: RecordAgentRow[] }) {
+  return (
+    <section className="rounded-xl border border-border bg-card p-4 mb-4">
+      <h2 className="text-base font-semibold mb-1">서브에이전트</h2>
+      <p className="text-2xs text-muted-foreground mb-3">
+        이 커밋 델타에서 호출한 에이전트와 그 실행 계량치 — 위임이 값을 했는지 본다
+      </p>
+      <div className="space-y-3">
+        {agents.map((a, i) => {
+          const name = a.plugin ? `${a.plugin}:${a.agent}` : a.agent;
+          const output = a.outputTokens ?? 0;
+          const cacheRead = a.cacheReadTokens ?? 0;
+          const cacheWrite = a.cacheCreationTokens ?? 0;
+          const input = a.inputTokens ?? 0;
+          // 서브에이전트도 컨텍스트를 소비한다 — 같은 단가로 위임 비용을 환산한다.
+          const cost = estimateCostUsd({
+            input,
+            output,
+            cacheWrite,
+            cacheRead,
+          });
+          const hasMetrics =
+            a.outputTokens != null || a.toolCalls != null || a.inputTokens != null;
+          const errors = a.errors ?? 0;
+          return (
+            <div
+              key={i}
+              className="rounded-lg border border-border bg-background/40 px-3 py-2.5"
+            >
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <span
+                  className={cn(
+                    "text-2xs px-1.5 py-0.5 rounded font-semibold",
+                    KIND_STYLE.AGENT,
+                  )}
+                >
+                  AGENT
+                </span>
+                <span className="font-mono text-xs font-medium">{name}</span>
+                <span className="text-2xs text-muted-foreground">
+                  ×{a.spawnCount}회 호출
+                </span>
+              </div>
+              {hasMetrics ? (
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                  <AgentMetric label="예상 비용" value={fmtUsd(cost)} />
+                  <AgentMetric
+                    label="모델 출력량"
+                    value={`${compactTokens(output)} tok`}
+                  />
+                  <AgentMetric label="도구 호출" value={String(a.toolCalls ?? 0)} />
+                  <AgentMetric
+                    label="오류"
+                    value={String(errors)}
+                    tone={errors > 0 ? "bad" : "default"}
+                  />
+                  <AgentMetric
+                    label="컨텍스트"
+                    value={compactTokens(cacheRead + cacheWrite)}
+                  />
+                </div>
+              ) : (
+                <p className="text-2xs text-muted-foreground">
+                  계량치 없음(구버전 기록) — spawn 횟수만 집계됨
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function CommitRecordDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [record, setRecord] = useState<CommitRecordDetail | null>(null);
@@ -278,6 +393,16 @@ export function CommitRecordDetailPage() {
     <PageShell
       title={record.commitSubject ?? record.commitSha.slice(0, 7)}
       subtitle={`${record.commitSha.slice(0, 7)}${record.revision > 1 ? ` · r${record.revision}` : ""} · ${record.project.name} · ${record.capturedAt.slice(0, 10)}`}
+      actions={
+        // 로컬 파일 모드에서 이 커밋을 만든 세션의 실제 대화 턴으로 바로 이동한다.
+        <Link
+          to={`/s/${record.sessionId}/chat`}
+          className="inline-flex items-center gap-1.5 h-8 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90"
+          title="이 커밋을 만든 세션의 대화 턴 보기"
+        >
+          💬 세션 대화 보기
+        </Link>
+      }
     >
       <div className="mb-4">
         <Link to="/" className="text-xs text-primary hover:underline">
@@ -285,32 +410,57 @@ export function CommitRecordDetailPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <StatCard
-          label="이벤트"
-          value={record.eventCount.toLocaleString()}
-          sub="델타 구간"
-        />
-        <StatCard
-          label="output"
-          value={record.outputTokens.toLocaleString()}
-          sub="생성 토큰"
-        />
-        <StatCard
-          label="cache write"
-          value={record.cacheCreationTokens.toLocaleString()}
-          sub="컨텍스트 재구축 몫"
-        />
-        <StatCard
-          label="cache read"
-          value={record.cacheReadTokens.toLocaleString()}
-          sub="컨텍스트 재사용"
-        />
-      </div>
+      {(() => {
+        // 상단 카드: 절대 토큰 수 대신 사람이 바로 해석할 수 있는 지표로 환산한다.
+        const costUsd = estimateCostUsd({
+          input: record.inputTokens,
+          output: record.outputTokens,
+          cacheWrite: record.cacheCreationTokens,
+          cacheRead: record.cacheReadTokens,
+        });
+        // 총 컨텍스트 크기 = 이 커밋 델타에서 오간 전체 토큰(입력+출력+캐시 쓰기/읽기).
+        const totalContext =
+          record.inputTokens +
+          record.outputTokens +
+          record.cacheCreationTokens +
+          record.cacheReadTokens;
+        const reuse = contextReuseRate(
+          record.cacheReadTokens,
+          record.cacheCreationTokens,
+        );
+        // 재사용이 높을수록 컨텍스트를 다시 짓지 않고 아꼈다는 뜻 → 낮으면 주의.
+        const reuseTone =
+          reuse == null ? "default" : reuse >= 60 ? "good" : reuse < 30 ? "warn" : "default";
+        return (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <StatCard
+              label="예상 비용"
+              value={fmtUsd(costUsd)}
+              sub="이 커밋에 든 토큰 비용 (공개 단가 추정)"
+            />
+            <StatCard
+              label="총 컨텍스트 크기"
+              value={`${compactTokens(totalContext)} tok`}
+              sub="이 커밋에서 오간 전체 토큰 (입력+출력+캐시)"
+            />
+            <StatCard
+              label="컨텍스트 재사용률"
+              value={reuse == null ? "산출 불가" : `${reuse.toFixed(0)}%`}
+              sub="높을수록 맥락을 다시 안 짓고 아껴 씀"
+              tone={reuseTone}
+            />
+            <StatCard
+              label="이벤트"
+              value={record.eventCount.toLocaleString()}
+              sub="직전 커밋 이후 오간 턴·도구 수"
+            />
+          </div>
+        );
+      })()}
 
       {/* 신호 — rubric 1단계가 최상단이라 여기서도 먼저 보여준다 */}
       <section className="rounded-xl border border-border bg-card p-4 mb-4">
-        <h2 className="text-sm font-medium mb-3">신호</h2>
+        <h2 className="text-base font-semibold mb-3">신호</h2>
         {confirmedSignals.length === 0 && falsePositives.length === 0 ? (
           <p className="text-xs text-muted-foreground">감정 신호 없음</p>
         ) : (
@@ -353,16 +503,49 @@ export function CommitRecordDetailPage() {
 
       {record.summary && (
         <section className="rounded-xl border border-border bg-card p-4 mb-4">
-          <h2 className="text-sm font-medium mb-2">요약</h2>
-          <p className="text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
-            {record.summary}
-          </p>
+          <h2 className="text-base font-semibold mb-2">요약</h2>
+          <Prose>{record.summary}</Prose>
         </section>
       )}
 
+      {record.costNote && (
+        <section className="rounded-xl border border-border bg-card p-4 mb-4">
+          <h2 className="text-base font-semibold mb-2">비용 메모</h2>
+          <Prose>{record.costNote}</Prose>
+        </section>
+      )}
+
+      {record.feedback.length > 0 && (
+        <section className="rounded-xl border border-border bg-card p-4 mb-4">
+          <h2 className="text-base font-semibold mb-3">피드백</h2>
+          <div className="space-y-4">
+            {record.feedback.map((f) => (
+              <div key={f.id}>
+                <p className="text-sm font-medium mb-1.5 flex items-center gap-2">
+                  {AXIS_LABEL[f.axis]}
+                  {f.verdict && (
+                    <span
+                      className={cn(
+                        "text-2xs px-1.5 py-0.5 rounded",
+                        VERDICT_STYLE[f.verdict],
+                      )}
+                    >
+                      {VERDICT_LABEL[f.verdict]}
+                    </span>
+                  )}
+                </p>
+                <Prose>{f.body}</Prose>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {record.agents.length > 0 && <SubAgentsSection agents={record.agents} />}
+
       {record.invocations.length > 0 && (
         <section className="rounded-xl border border-border bg-card p-4 mb-4">
-          <h2 className="text-sm font-medium mb-3">에이전트·도구 사용 내역</h2>
+          <h2 className="text-base font-semibold mb-3">에이전트·도구 사용 내역</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -412,45 +595,12 @@ export function CommitRecordDetailPage() {
         </section>
       )}
 
-      {record.feedback.length > 0 && (
-        <section className="rounded-xl border border-border bg-card p-4 mb-4">
-          <h2 className="text-sm font-medium mb-3">피드백</h2>
-          <div className="space-y-3">
-            {record.feedback.map((f) => (
-              <div key={f.id}>
-                <p className="text-xs font-medium mb-1 flex items-center gap-2">
-                  {AXIS_LABEL[f.axis]}
-                  {f.verdict && (
-                    <span
-                      className={cn(
-                        "text-2xs px-1.5 py-0.5 rounded",
-                        VERDICT_STYLE[f.verdict],
-                      )}
-                    >
-                      {VERDICT_LABEL[f.verdict]}
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                  {f.body}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
+      {record.sessionHygiene && (
+        <CacheReuseCard h={record.sessionHygiene} />
       )}
 
       {record.sessionHygiene && (
         <SessionHygieneSection h={record.sessionHygiene} />
-      )}
-
-      {record.costNote && (
-        <section className="rounded-xl border border-border bg-card p-4 mb-4">
-          <h2 className="text-sm font-medium mb-2">비용 메모</h2>
-          <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
-            {record.costNote}
-          </p>
-        </section>
       )}
 
       {/* 파싱이 놓친 뉘앙스는 원문으로 확인한다 — 원본을 항상 보관하는 이유 */}

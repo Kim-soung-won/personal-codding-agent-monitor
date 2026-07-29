@@ -19,16 +19,18 @@ interface Props {
   icon?: ReactNode
   /** 라벨 옆 ⓘ 에 얹는 설명. 지표가 무엇을 뜻하고 왜 보는지 사용자 관점으로 적는다. */
   hint?: string
+  /** hint 툴팁 방향. 헤더 바로 아래 첫 행 카드는 'bottom' 으로 위쪽 잘림을 피한다. */
+  hintPlacement?: 'top' | 'bottom'
 }
 
 /** 분석 대시보드용 지표 카드. */
-export function StatCard({ label, value, sub, tone = 'default', icon, hint }: Props) {
+export function StatCard({ label, value, sub, tone = 'default', icon, hint, hintPlacement }: Props) {
   return (
     <div className="rounded-xl border border-border bg-card px-4 py-3 flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2">
         <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1">
           {label}
-          {hint && <InfoHint>{hint}</InfoHint>}
+          {hint && <InfoHint placement={hintPlacement}>{hint}</InfoHint>}
         </p>
         {icon && <span className="text-muted-foreground shrink-0">{icon}</span>}
       </div>
