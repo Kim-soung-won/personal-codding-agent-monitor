@@ -8,6 +8,7 @@ import { TokenDashboard } from './components/TokenDashboard'
 import { ResourcesPanel } from './components/ResourcesPanel'
 import { WelcomeDashboard } from './components/WelcomeDashboard'
 import { GlobalAnalytics } from './components/GlobalAnalytics'
+import { SessionCompare } from './components/SessionCompare'
 import { SessionTitleBadge } from './components/SessionTitleBadge'
 import { AppShell } from './components/AppShell'
 import { CommitRecordsPage } from './pages/CommitRecordsPage'
@@ -339,6 +340,94 @@ function ProjectPage({ sessions }: ProjectPageProps) {
   )
 }
 
+// ─── Projects list page (레거시 · 로컬 파일 모드 전용) ──────────────────────────
+
+interface ProjectGroup {
+  projectEncoded: string
+  projectPath: string
+  sessionCount: number
+  lastModified: number
+}
+
+function groupProjects(sessions: SessionInfo[]): ProjectGroup[] {
+  const groups = new Map<string, SessionInfo[]>()
+  for (const s of sessions) {
+    const list = groups.get(s.projectEncoded)
+    if (list) {
+      list.push(s)
+    } else {
+      groups.set(s.projectEncoded, [s])
+    }
+  }
+  return [...groups.entries()]
+    .map(([projectEncoded, list]) => ({
+      projectEncoded,
+      projectPath: list[0]?.projectPath ?? '',
+      sessionCount: list.length,
+      lastModified: Math.max(...list.map(s => s.lastModified)),
+    }))
+    .sort((a, b) => b.lastModified - a.lastModified)
+}
+
+function ProjectsListPage({ sessions }: { sessions: SessionInfo[] }) {
+  const navigate = useNavigate()
+  const projects = groupProjects(sessions)
+
+  return (
+    <>
+      <header className="shrink-0 flex items-center gap-3 px-4 border-b h-12">
+        <p className="flex-1 text-sm font-medium">프로젝트</p>
+        <DarkToggle />
+      </header>
+      <main className="flex-1 overflow-y-auto p-4">
+        {projects.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-12 text-center">
+            프로젝트가 없습니다 — 로컬 파일 모드에서만 표시됩니다.
+          </p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {projects.map(p => (
+              <button
+                key={p.projectEncoded}
+                onClick={() => navigate(`/p/${encodeURIComponent(p.projectEncoded)}`)}
+                className="text-left border rounded-md p-3 transition-colors hover:bg-muted/40 hover:border-primary/40"
+              >
+                <p className="text-sm font-medium truncate">{projectLabel(p.projectPath)}</p>
+                <p className="text-xs text-muted-foreground mt-1">{p.sessionCount}개 세션</p>
+                <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                  {formatSessionTime(p.lastModified)}
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
+      </main>
+    </>
+  )
+}
+
+// ─── Compare page (레거시 · 로컬 파일 모드 전용) ────────────────────────────────
+
+function ComparePage({ sessions }: { sessions: SessionInfo[] }) {
+  return (
+    <>
+      <header className="shrink-0 flex items-center gap-3 px-4 border-b h-12">
+        <p className="flex-1 text-sm font-medium">세션 비교</p>
+        <DarkToggle />
+      </header>
+      <main className="flex-1 overflow-y-auto p-4">
+        {sessions.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-12 text-center">
+            비교할 세션이 없습니다 — 로컬 파일 모드에서만 표시됩니다.
+          </p>
+        ) : (
+          <SessionCompare sessions={sessions} />
+        )}
+      </main>
+    </>
+  )
+}
+
 // ─── Analytics page ───────────────────────────────────────────────────────────
 
 function AnalyticsPage({ sessions }: { sessions: SessionInfo[] }) {
@@ -398,6 +487,8 @@ export default function App() {
         {/* 참고자료(구 홈) */}
         <Route path="/reference/pricing" element={<HomePage />} />
         {/* 레거시 뷰(Phase 2b-2에서 대시보드로 대체 예정, 현재 URL로 접근 가능) */}
+        <Route path="/projects" element={<ProjectsListPage sessions={sessions} />} />
+        <Route path="/compare" element={<ComparePage sessions={sessions} />} />
         <Route path="/analytics" element={<AnalyticsPage sessions={sessions} />} />
         <Route path="/s/:sessionId" element={<Navigate to="chat" replace />} />
         <Route path="/s/:sessionId/:tab" element={<SessionPage sessions={sessions} onConnectedChange={() => {}} />} />

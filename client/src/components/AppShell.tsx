@@ -11,13 +11,13 @@ interface NavItem {
   disabled?: boolean
 }
 
-// 밀도형 대시보드 네비게이션. Soon = Phase 2b-2 예정(비활성).
+// 밀도형 대시보드 네비게이션. Projects·Compare는 로컬 파일 모드 전용 레거시 뷰.
 const NAV: NavItem[] = [
   { label: '커밋 기록', to: '/', badge: 'NEW', icon: <IconGauge /> },
   { label: 'Plugins', to: '/plugins', icon: <IconPlug /> },
   { label: 'Sub-agents', to: '/subagents', icon: <IconAgent /> },
-  { label: 'Projects', to: '/projects', badge: 'Soon', disabled: true, icon: <IconFolder /> },
-  { label: 'Compare', to: '/compare', badge: 'Soon', disabled: true, icon: <IconCompare /> },
+  { label: 'Projects', to: '/projects', icon: <IconFolder /> },
+  { label: 'Compare', to: '/compare', icon: <IconCompare /> },
   { label: 'Pricing 참고', to: '/reference/pricing', icon: <IconBook /> },
 ]
 
