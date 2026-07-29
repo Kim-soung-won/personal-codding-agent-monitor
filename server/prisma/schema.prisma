@@ -282,7 +282,9 @@ model SessionHygiene {
   crGenRatio    Float?
   /// 델타 내 최대 tool_result 길이.
   maxToolResultLen Int?
-  /// 이후 턴 내내 재청구된 대용량 tool_result 목록 `[{ len }]`(최대 10건). 배열이라 Json.
+  /// 컨텍스트에 잔류하며 재청구된 대용량 tool_result 목록(최대 10건, 재청구 비용 내림차순).
+  /// `[{ len, turns_resident, rebilled_tokens }]` — turns_resident/rebilled_tokens 는
+  /// additive(구버전은 `{ len }`만). 배열이라 Json. 형태만 바뀌므로 마이그레이션 불필요.
   toolResultSpikes Json?
   /// 턴 컨텍스트(input+cache_read) 최댓값.
   maxTurnContext     Int?

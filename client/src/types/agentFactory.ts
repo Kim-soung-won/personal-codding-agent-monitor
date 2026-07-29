@@ -77,6 +77,10 @@ export interface FeedbackRow {
 
 export interface ToolResultSpike {
   len: number
+  /** 이 결과가 컨텍스트에 잔류한 assistant 턴 수. 구버전 metrics 엔 없음(optional). */
+  turns_resident?: number
+  /** 재청구 추정 토큰(글자÷4 × 잔류 턴). 구버전 metrics 엔 없음 → len 기반 폴백. */
+  rebilled_tokens?: number
 }
 
 /**

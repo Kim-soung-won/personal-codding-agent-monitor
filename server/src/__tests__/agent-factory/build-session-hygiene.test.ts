@@ -65,4 +65,18 @@ describe('buildSessionHygiene', () => {
     expect(row.cacheRead).toBe(500)
     expect(row.sessionResets).toBeUndefined()
   })
+
+  it('스파이크의 turns_resident·rebilled_tokens 를 그대로 보존한다(Json passthrough)', () => {
+    const row = buildSessionHygiene('rec1', {
+      tool_result_spikes: [{ len: 8000, turns_resident: 50, rebilled_tokens: 100000 }],
+    })!
+    expect(row.toolResultSpikes).toEqual([
+      { len: 8000, turns_resident: 50, rebilled_tokens: 100000 },
+    ])
+  })
+
+  it('구버전 {len}만 있는 스파이크도 거부 없이 저장한다(하위호환)', () => {
+    const row = buildSessionHygiene('rec1', { tool_result_spikes: [{ len: 3000 }] })!
+    expect(row.toolResultSpikes).toEqual([{ len: 3000 }])
+  })
 })
