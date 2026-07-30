@@ -27,11 +27,13 @@ export function SubAgentsPage() {
     {
       key: 'agent',
       label: '에이전트',
+      render: (r) => <span className="font-medium">{r.agent}</span>,
+    },
+    {
+      key: 'plugin',
+      label: '플러그인',
       render: (r) => (
-        <div className="min-w-0">
-          <span className="font-medium">{r.agent}</span>
-          {r.plugin && <span className="text-2xs text-muted-foreground ml-1.5">{r.plugin}</span>}
-        </div>
+        <span className="font-mono text-2xs text-muted-foreground">{r.plugin ?? '—'}</span>
       ),
     },
     { key: 'commits', label: '커밋', align: 'right', render: (r) => r.commits },

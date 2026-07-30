@@ -14,7 +14,8 @@ interface NavItem {
 // 밀도형 대시보드 네비게이션. Projects·Compare는 로컬 파일 모드 전용 레거시 뷰.
 const NAV: NavItem[] = [
   { label: '커밋 기록', to: '/', badge: 'NEW', icon: <IconGauge /> },
-  { label: 'Plugins', to: '/plugins', icon: <IconPlug /> },
+  // 평가 축은 개별 실행 단위(에이전트·스킬). 플러그인은 배포 단위라 성능 신호가
+  // 상쇄돼 집계 축에서 뺀다 — 소속은 각 목록의 plugin 컬럼으로 본다.
   { label: 'Sub-agents', to: '/subagents', icon: <IconAgent /> },
   { label: 'Skills', to: '/skills', icon: <IconSpark /> },
   { label: 'Projects', to: '/projects', icon: <IconFolder /> },
@@ -120,7 +121,6 @@ function svg(path: ReactNode) {
   )
 }
 function IconGauge() { return svg(<><path strokeLinecap="round" d="M12 14l3-3" /><path strokeLinecap="round" d="M4 18a8 8 0 1116 0" /></>) }
-function IconPlug() { return svg(<><path strokeLinecap="round" d="M9 7V3M15 7V3M7 7h10v4a5 5 0 01-10 0V7zM12 16v5" /></>) }
 function IconAgent() { return svg(<><rect x="4" y="8" width="16" height="12" rx="2" /><path strokeLinecap="round" d="M12 8V4M9 14h.01M15 14h.01" /></>) }
 function IconFolder() { return svg(<path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />) }
 function IconCompare() { return svg(<><path strokeLinecap="round" d="M12 3v18M6 8l-3 3 3 3M18 8l3 3-3 3" /></>) }

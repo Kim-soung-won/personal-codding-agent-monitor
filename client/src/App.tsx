@@ -7,7 +7,6 @@ import { CommitRecordsPage } from '@/pages/commit-records'
 import { CommitRecordDetailPage } from '@/pages/commit-record-detail'
 import { SubAgentsPage } from '@/pages/subagents'
 import { SubAgentDetailPage } from '@/pages/subagent-detail'
-import { PluginsPage } from '@/pages/plugins'
 import { PluginDetailPage } from '@/pages/plugin-detail'
 import { SkillsPage } from '@/pages/skills'
 import { SkillDetailPage } from '@/pages/skill-detail'
@@ -32,7 +31,7 @@ export default function App() {
         <Route path="/records/:id" element={<CommitRecordDetailPage />} />
         <Route path="/subagents" element={<SubAgentsPage />} />
         <Route path="/subagents/:agent" element={<SubAgentDetailPage />} />
-        <Route path="/plugins" element={<PluginsPage />} />
+        {/* plugin 은 평가 축이 아니라 그루핑 라벨 — 메뉴/목록은 없고 상세만 라벨 클릭으로 진입. */}
         <Route path="/plugins/:plugin" element={<PluginDetailPage />} />
         <Route path="/skills" element={<SkillsPage />} />
         <Route path="/skills/:skill" element={<SkillDetailPage />} />
