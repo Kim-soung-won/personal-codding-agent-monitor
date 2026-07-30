@@ -1,22 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { PageShell } from '@/shared/ui/PageShell'
 import { StatCard } from '@/shared/ui/StatCard'
 import { RankTable, type Column } from '@/shared/ui/RankTable'
 import { compactTokens } from '@/shared/lib/format'
-import * as api from '@/entities/commit-record'
+import { commitRecordQueries } from '@/entities/commit-record'
 import type { PluginStatRow } from '@/entities/commit-record'
 
 export function PluginsPage() {
-  const [rows, setRows] = useState<PluginStatRow[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    setLoading(true)
-    api
-      .getPluginStats()
-      .then(setRows)
-      .finally(() => setLoading(false))
-  }, [])
+  const { data: rows = [], isPending: loading } = useQuery(commitRecordQueries.pluginStats())
 
   const derived = useMemo(() => {
     const output = rows.reduce((s, r) => s + r.outputTokens, 0)

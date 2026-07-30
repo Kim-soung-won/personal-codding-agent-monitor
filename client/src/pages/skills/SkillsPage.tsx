@@ -1,21 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { PageShell } from '@/shared/ui/PageShell'
 import { StatCard } from '@/shared/ui/StatCard'
 import { RankTable, type Column } from '@/shared/ui/RankTable'
-import * as api from '@/entities/commit-record'
+import { commitRecordQueries } from '@/entities/commit-record'
 import type { SkillStatRow } from '@/entities/commit-record'
 
 export function SkillsPage() {
-  const [rows, setRows] = useState<SkillStatRow[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    setLoading(true)
-    api
-      .getSkillStats()
-      .then(setRows)
-      .finally(() => setLoading(false))
-  }, [])
+  const { data: rows = [], isPending: loading } = useQuery(commitRecordQueries.skillStats())
 
   const derived = useMemo(() => {
     const invocations = rows.reduce((s, r) => s + r.invocations, 0)

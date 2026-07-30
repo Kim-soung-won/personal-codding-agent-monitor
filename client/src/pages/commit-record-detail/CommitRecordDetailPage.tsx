@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { PageShell } from "@/shared/ui/PageShell";
 import { StatCard } from "@/shared/ui/StatCard";
 import { Prose } from "@/shared/ui/Prose";
-import { CacheReuseCard } from "@/entities/commit-record";
+import { CacheReuseCard, commitRecordQueries } from "@/entities/commit-record";
 import { cn } from "@/shared/lib/utils";
 import {
   compactTokens,
@@ -11,10 +12,8 @@ import {
   estimateCostUsd,
   fmtUsd,
 } from "@/shared/lib/format";
-import * as api from "@/entities/commit-record";
 import {
   AXIS_LABEL,
-  type CommitRecordDetail,
   type FeedbackVerdict,
   type InvocationRow,
   type RecordAgentRow,
@@ -355,18 +354,11 @@ function SubAgentsSection({ agents }: { agents: RecordAgentRow[] }) {
 
 export function CommitRecordDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [record, setRecord] = useState<CommitRecordDetail | null>(null);
-  const [loading, setLoading] = useState(true);
   const [showRaw, setShowRaw] = useState(false);
-
-  useEffect(() => {
-    if (!id) return;
-    setLoading(true);
-    api
-      .getRecord(id)
-      .then(setRecord)
-      .finally(() => setLoading(false));
-  }, [id]);
+  const { data: record, isPending: loading } = useQuery({
+    ...commitRecordQueries.record(id ?? ""),
+    enabled: !!id,
+  });
 
   if (loading) {
     return (

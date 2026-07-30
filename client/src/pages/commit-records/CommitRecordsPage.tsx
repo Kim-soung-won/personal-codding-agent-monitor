@@ -1,16 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { PageShell } from '@/shared/ui/PageShell'
 import { StatCard } from '@/shared/ui/StatCard'
 import { cn } from '@/shared/lib/utils'
-import * as api from '@/entities/commit-record'
-import type {
-  AgentStatRow,
-  CommitRecordSummary,
-  ProjectRef,
-  SignalStatRow,
-  UserRef,
-} from '@/entities/commit-record'
+import { commitRecordQueries, type CommitRecordSummary } from '@/entities/commit-record'
 
 function daysAgo(n: number): string {
   const d = new Date()
@@ -61,38 +55,22 @@ export function CommitRecordsPage() {
   const [agent, setAgent] = useState<string | null>(null)
   const [page, setPage] = useState(1)
 
-  const [projects, setProjects] = useState<ProjectRef[]>([])
-  const [users, setUsers] = useState<UserRef[]>([])
-  const [agentStats, setAgentStats] = useState<AgentStatRow[]>([])
-  const [signalStats, setSignalStats] = useState<SignalStatRow[]>([])
-  const [items, setItems] = useState<CommitRecordSummary[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    api.getMeta().then((m) => {
-      setProjects(m.projects)
-      setUsers(m.users)
-    })
-    api.getAgentStats().then(setAgentStats)
-    api.getSignalStats().then(setSignalStats)
-  }, [])
+  const { data: meta } = useQuery(commitRecordQueries.meta())
+  const projects = meta?.projects ?? []
+  const users = meta?.users ?? []
+  const { data: agentStats = [] } = useQuery(commitRecordQueries.agentStats())
+  const { data: signalStats = [] } = useQuery(commitRecordQueries.signalStats())
 
   // 필터가 바뀌면 첫 페이지로 되돌린다(빈 페이지에 갇히는 것 방지).
   useEffect(() => {
     setPage(1)
   }, [from, to, projectId, userId, agent])
 
-  useEffect(() => {
-    setLoading(true)
-    api
-      .getRecords({ from, to, projectId, userId, agent, page, pageSize: 20 })
-      .then((r) => {
-        setItems(r.items)
-        setTotal(r.total)
-      })
-      .finally(() => setLoading(false))
-  }, [from, to, projectId, userId, agent, page])
+  const { data: recordPage, isPending: loading } = useQuery(
+    commitRecordQueries.records({ from, to, projectId, userId, agent, page, pageSize: 20 }),
+  )
+  const items = recordPage?.items ?? []
+  const total = recordPage?.total ?? 0
 
   const derived = useMemo(() => {
     const outputTokens = items.reduce((s, r) => s + r.outputTokens, 0)
