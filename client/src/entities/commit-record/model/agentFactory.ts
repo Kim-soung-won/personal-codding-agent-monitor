@@ -193,6 +193,30 @@ export interface SkillStatRow {
   errors: number
 }
 
+/** 개별 호출 이력 한 건 — GET /invocations. 축별 상세 페이지가 공유한다. */
+export interface InvocationHistoryRow {
+  id: string
+  seq: number | null
+  actor: string
+  kind: InvocationKind | null
+  resource: string
+  plugin: string | null
+  target: string | null
+  note: string | null
+  isError: boolean
+  commitId: string
+  commitSha: string
+  commitSubject: string | null
+  capturedAt: string
+  project: string | null
+}
+
+export interface InvocationFilter {
+  kind?: InvocationKind
+  resource?: string
+  plugin?: string
+}
+
 export interface SignalStatRow {
   polarity: SignalPolarity
   verdict: SignalVerdict

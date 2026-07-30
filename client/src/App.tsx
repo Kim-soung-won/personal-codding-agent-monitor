@@ -6,8 +6,11 @@ import { useWebSocket, sessionQueries } from '@/entities/session'
 import { CommitRecordsPage } from '@/pages/commit-records'
 import { CommitRecordDetailPage } from '@/pages/commit-record-detail'
 import { SubAgentsPage } from '@/pages/subagents'
+import { SubAgentDetailPage } from '@/pages/subagent-detail'
 import { PluginsPage } from '@/pages/plugins'
+import { PluginDetailPage } from '@/pages/plugin-detail'
 import { SkillsPage } from '@/pages/skills'
+import { SkillDetailPage } from '@/pages/skill-detail'
 import { HomePage } from '@/pages/home'
 import { ProjectsListPage } from '@/pages/projects-list'
 import { ComparePage } from '@/pages/compare'
@@ -28,8 +31,11 @@ export default function App() {
         <Route path="/" element={<CommitRecordsPage />} />
         <Route path="/records/:id" element={<CommitRecordDetailPage />} />
         <Route path="/subagents" element={<SubAgentsPage />} />
+        <Route path="/subagents/:agent" element={<SubAgentDetailPage />} />
         <Route path="/plugins" element={<PluginsPage />} />
+        <Route path="/plugins/:plugin" element={<PluginDetailPage />} />
         <Route path="/skills" element={<SkillsPage />} />
+        <Route path="/skills/:skill" element={<SkillDetailPage />} />
         {/* 참고자료(구 홈) */}
         <Route path="/reference/pricing" element={<HomePage />} />
         {/* 레거시 뷰(Phase 2b-2에서 대시보드로 대체 예정, 현재 URL로 접근 가능) */}

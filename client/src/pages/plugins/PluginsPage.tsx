@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { PageShell } from '@/shared/ui/PageShell'
 import { StatCard } from '@/shared/ui/StatCard'
@@ -8,6 +9,7 @@ import { commitRecordQueries } from '@/entities/commit-record'
 import type { PluginStatRow } from '@/entities/commit-record'
 
 export function PluginsPage() {
+  const navigate = useNavigate()
   const { data: rows = [], isPending: loading } = useQuery(commitRecordQueries.pluginStats())
 
   const derived = useMemo(() => {
@@ -77,6 +79,7 @@ export function PluginsPage() {
           rows={rows}
           keyOf={(r) => r.plugin ?? '(none)'}
           barValueOf={(r) => r.outputTokens}
+          onRowClick={(r) => r.plugin && navigate(`/plugins/${encodeURIComponent(r.plugin)}`)}
           emptyMessage={loading ? '불러오는 중…' : '플러그인 사용 기록이 없습니다.'}
         />
       </div>

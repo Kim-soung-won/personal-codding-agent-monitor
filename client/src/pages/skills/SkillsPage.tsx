@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { PageShell } from '@/shared/ui/PageShell'
 import { StatCard } from '@/shared/ui/StatCard'
@@ -7,6 +8,7 @@ import { commitRecordQueries } from '@/entities/commit-record'
 import type { SkillStatRow } from '@/entities/commit-record'
 
 export function SkillsPage() {
+  const navigate = useNavigate()
   const { data: rows = [], isPending: loading } = useQuery(commitRecordQueries.skillStats())
 
   const derived = useMemo(() => {
@@ -71,6 +73,7 @@ export function SkillsPage() {
           rows={rows}
           keyOf={(r) => r.skill}
           barValueOf={(r) => r.invocations}
+          onRowClick={(r) => navigate(`/skills/${encodeURIComponent(r.skill)}`)}
           emptyMessage={loading ? '불러오는 중…' : '스킬 사용 기록이 없습니다.'}
         />
       </div>

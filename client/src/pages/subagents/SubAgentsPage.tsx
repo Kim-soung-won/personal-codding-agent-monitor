@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { PageShell } from '@/shared/ui/PageShell'
 import { StatCard } from '@/shared/ui/StatCard'
@@ -8,6 +9,7 @@ import { commitRecordQueries } from '@/entities/commit-record'
 import type { AgentStatRow } from '@/entities/commit-record'
 
 export function SubAgentsPage() {
+  const navigate = useNavigate()
   const { data: rows = [], isPending: loading } = useQuery(commitRecordQueries.agentStats())
 
   const derived = useMemo(() => {
@@ -95,6 +97,7 @@ export function SubAgentsPage() {
           rows={rows}
           keyOf={(r) => `${r.plugin ?? ''}:${r.agent}`}
           barValueOf={(r) => r.outputTokens}
+          onRowClick={(r) => navigate(`/subagents/${encodeURIComponent(r.agent)}`)}
           emptyMessage={loading ? '불러오는 중…' : '서브에이전트 사용 기록이 없습니다.'}
         />
       </div>

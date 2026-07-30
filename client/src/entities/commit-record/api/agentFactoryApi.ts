@@ -14,6 +14,8 @@ import type {
   CommitRecordDetail,
   DailyTokenRow,
   FeedbackStatRow,
+  InvocationFilter,
+  InvocationHistoryRow,
   PluginStatRow,
   SkillStatRow,
   ProjectRef,
@@ -70,6 +72,16 @@ async function getRows<T>(path: string): Promise<T[]> {
   try {
     const res = await http.get(path)
     return unwrap(res, rowArray, []) as T[]
+  } catch {
+    return []
+  }
+}
+
+/** 개별 호출 이력 — kind/resource/plugin 필터로 축별 드릴다운. */
+export async function getInvocations(f: InvocationFilter = {}): Promise<InvocationHistoryRow[]> {
+  try {
+    const res = await http.get('/api/agent-factory/invocations', { params: f })
+    return unwrap(res, rowArray, []) as unknown as InvocationHistoryRow[]
   } catch {
     return []
   }

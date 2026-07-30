@@ -1,6 +1,9 @@
 import { queryOptions } from '@tanstack/react-query'
 import * as api from '@/entities/commit-record/api/agentFactoryApi'
-import type { RecordFilter } from '@/entities/commit-record/model/agentFactory'
+import type {
+  RecordFilter,
+  InvocationFilter,
+} from '@/entities/commit-record/model/agentFactory'
 
 /**
  * commit-record 도메인 react-query 옵션. 컴포넌트는 useQuery/useSuspenseQuery 에 이 옵션을
@@ -32,4 +35,9 @@ export const commitRecordQueries = {
   dailyTokens: () =>
     queryOptions({ queryKey: [...KEY, 'stats', 'tokens-daily'], queryFn: api.getDailyTokens }),
   meta: () => queryOptions({ queryKey: [...KEY, 'meta'], queryFn: api.getMeta }),
+  invocations: (filter: InvocationFilter) =>
+    queryOptions({
+      queryKey: [...KEY, 'invocations', filter],
+      queryFn: () => api.getInvocations(filter),
+    }),
 }
