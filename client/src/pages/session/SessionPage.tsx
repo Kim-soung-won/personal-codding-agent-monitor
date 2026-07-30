@@ -1,15 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   useWebSocket,
-  fetchSessionEvents,
+  sessionQueries,
   projectLabel,
   ChatView,
   ThinkingViewer,
   TokenDashboard,
   ResourcesPanel,
   SessionTitleBadge,
-  type NormalizedEvent,
   type SessionInfo,
 } from '@/entities/session'
 import { DarkToggle } from '@/shared/ui/DarkToggle'
@@ -38,23 +38,18 @@ export function SessionPage({ sessions, onConnectedChange }: SessionPageProps) {
   const activeTab = VALID_SESSION_TABS.has(tab) ? (tab as SessionTab) : 'chat'
 
   const session = sessions.find(s => s.sessionId === sessionId)
-  const [historicalEvents, setHistoricalEvents] = useState<NormalizedEvent[]>([])
-  const [loading, setLoading] = useState(false)
 
   const { events: liveEvents, connected } = useWebSocket([sessionId])
 
   useEffect(() => { onConnectedChange(connected) }, [connected, onConnectedChange])
 
-  useEffect(() => {
-    setHistoricalEvents([])
-    if (!sessionId) return
-    setLoading(true)
-    fetchSessionEvents(sessionId)
-      .then(evs => setHistoricalEvents(evs.slice(-500)))
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [sessionId])
-
+  const { data: fetched = [], isPending } = useQuery({
+    ...sessionQueries.events(sessionId),
+    enabled: !!sessionId,
+  })
+  const loading = !!sessionId && isPending
+  // 히스토리는 최근 500개만. 라이브 이벤트는 중복 제거 후 뒤에 append.
+  const historicalEvents = fetched.slice(-500)
   const seenIds = new Set(historicalEvents.map(e => e.id))
   const events = [...historicalEvents, ...liveEvents.filter(e => !seenIds.has(e.id))]
 

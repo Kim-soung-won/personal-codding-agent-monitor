@@ -1,16 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { PageShell } from '@/shared/ui/PageShell'
 import { StatCard } from '@/shared/ui/StatCard'
 import { cn } from '@/shared/lib/utils'
-import { commitRecordQueries, type CommitRecordSummary } from '@/entities/commit-record'
-
-function daysAgo(n: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
-  return d.toISOString().slice(0, 10)
-}
+import {
+  commitRecordQueries,
+  useRecordsFilter,
+  type CommitRecordSummary,
+} from '@/entities/commit-record'
 
 function compactTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -47,24 +45,16 @@ function SignalBadges({ record }: { record: CommitRecordSummary }) {
 }
 
 export function CommitRecordsPage() {
-  // 기본 조회 범위는 일주일. to 는 서버에서 그날 끝(23:59:59.999)까지 포함하도록 확장된다.
-  const [from, setFrom] = useState(() => daysAgo(6))
-  const [to, setTo] = useState(() => daysAgo(0))
-  const [projectId, setProjectId] = useState<number | null>(null)
-  const [userId, setUserId] = useState<number | null>(null)
-  const [agent, setAgent] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
+  // 필터 상태는 zustand store(도메인 filter). 기본 조회 범위 일주일, to 는 서버에서 그날 끝까지 확장.
+  // page-reset(필터 변경 시 1로) 은 store setter 가 처리한다.
+  const { from, to, projectId, userId, agent, page } = useRecordsFilter()
+  const { setFrom, setTo, setProjectId, setUserId, setAgent, setPage } = useRecordsFilter()
 
   const { data: meta } = useQuery(commitRecordQueries.meta())
   const projects = meta?.projects ?? []
   const users = meta?.users ?? []
   const { data: agentStats = [] } = useQuery(commitRecordQueries.agentStats())
   const { data: signalStats = [] } = useQuery(commitRecordQueries.signalStats())
-
-  // 필터가 바뀌면 첫 페이지로 되돌린다(빈 페이지에 갇히는 것 방지).
-  useEffect(() => {
-    setPage(1)
-  }, [from, to, projectId, userId, agent])
 
   const { data: recordPage, isPending: loading } = useQuery(
     commitRecordQueries.records({ from, to, projectId, userId, agent, page, pageSize: 20 }),
@@ -236,7 +226,7 @@ export function CommitRecordsPage() {
               <button
                 className={cn(SELECT_CLASS, 'disabled:opacity-40')}
                 disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
+                onClick={() => setPage(page - 1)}
               >
                 이전
               </button>
@@ -246,7 +236,7 @@ export function CommitRecordsPage() {
               <button
                 className={cn(SELECT_CLASS, 'disabled:opacity-40')}
                 disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
+                onClick={() => setPage(page + 1)}
               >
                 다음
               </button>

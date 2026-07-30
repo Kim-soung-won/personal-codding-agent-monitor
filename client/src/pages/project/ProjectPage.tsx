@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  fetchSessionEvents,
+  sessionQueries,
   projectLabel,
   formatSessionTime,
   ThinkingViewer,
   TokenDashboard,
   ResourcesPanel,
-  type NormalizedEvent,
   type SessionInfo,
 } from '@/entities/session'
 import { DarkToggle } from '@/shared/ui/DarkToggle'
@@ -46,33 +46,14 @@ export function ProjectPage({ sessions }: ProjectPageProps) {
 
   const projectPath = projectSessions[0]?.projectPath ?? ''
 
-  const [allEvents, setAllEvents] = useState<NormalizedEvent[]>([])
-  const [loading, setLoading] = useState(false)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
 
-  useEffect(() => {
-    setAllEvents([])
-    setSelectedSessionId(null)
-    if (projectSessions.length === 0) return
-    setLoading(true)
+  // 프로젝트가 바뀌면 선택 세션을 전체 집계로 되돌린다.
+  useEffect(() => { setSelectedSessionId(null) }, [projectEncoded])
 
-    Promise.all(projectSessions.map(s => fetchSessionEvents(s.sessionId).catch(() => [])))
-      .then(results => {
-        const merged = results
-          .flat()
-          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-        const seen = new Set<string>()
-        const deduped = merged.filter(e => {
-          if (seen.has(e.id)) return false
-          seen.add(e.id)
-          return true
-        })
-        setAllEvents(deduped)
-      })
-      .finally(() => setLoading(false))
-  // projectSessions.length: re-run when sessions first load (direct URL navigation)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectEncoded, projectSessions.length])
+  const sessionIds = projectSessions.map(s => s.sessionId)
+  const { data: allEvents = [], isPending } = useQuery(sessionQueries.manyEvents(sessionIds))
+  const loading = sessionIds.length > 0 && isPending
 
   // Filter to selected session or show all
   const events = selectedSessionId

@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useTheme } from '@/shared/lib/useTheme'
 import { AppShell } from '@/shared/ui/AppShell'
-import { apiFetch } from '@/shared/api/config'
-import { useWebSocket, type SessionInfo } from '@/entities/session'
+import { useWebSocket, sessionQueries } from '@/entities/session'
 import { CommitRecordsPage } from '@/pages/commit-records'
 import { CommitRecordDetailPage } from '@/pages/commit-record-detail'
 import { SubAgentsPage } from '@/pages/subagents'
@@ -18,16 +17,9 @@ import { ProjectPage } from '@/pages/project'
 
 export default function App() {
   useTheme()
-  const [sessions, setSessions] = useState<SessionInfo[]>([])
+  const { data: sessions = [] } = useQuery(sessionQueries.list())
   // 전역 WS 연결 상태(빈 세션 구독 = 연결 표시용). 셸의 연결 점에 반영.
   const { connected } = useWebSocket([])
-
-  useEffect(() => {
-    apiFetch('/api/sessions')
-      .then(r => r.json())
-      .then(res => { if (res.success) setSessions(res.data) })
-      .catch(() => {})
-  }, [])
 
   return (
     <AppShell connected={connected}>

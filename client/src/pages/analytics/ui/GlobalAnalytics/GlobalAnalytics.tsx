@@ -1,12 +1,13 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { BarChart, DatelineChart, DoughnutChart } from '@we/ai-template'
 import type { BarChartView, CategoryDoughnutChartView, DateLineChartView } from '@we/ai-template'
 import { useTheme } from '@/shared/lib/useTheme'
 import { extractInvocations, groupByPlugin } from '@shared/resource-extract'
-import { apiFetch } from '@/shared/api/config'
+import { sessionQueries } from '@/entities/session'
 import { KIND_HEX as KIND_COLORS } from '@/shared/lib/resourceKind'
 import { calcCostUsd, collectUsage } from '@shared/pricing'
-import type { NormalizedEvent, SessionInfo } from '@/entities/session'
+import type { SessionInfo } from '@/entities/session'
 
 function projectLabel(path: string): string {
   const parts = path.split('/').filter(Boolean)
@@ -36,30 +37,9 @@ export function GlobalAnalytics({ sessions }: Props) {
   const { dark } = useTheme()
   const chartTheme = dark ? 'dark' : 'light'
 
-  const [allEvents, setAllEvents] = useState<NormalizedEvent[]>([])
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (sessions.length === 0) return
-    setLoading(true)
-    Promise.all(
-      sessions.map(s =>
-        apiFetch(`/api/sessions/${s.sessionId}/events`)
-          .then(r => r.json())
-          .then(res => (res.success ? (res.data as NormalizedEvent[]) : []))
-          .catch(() => [] as NormalizedEvent[]),
-      ),
-    ).then(results => {
-      const merged = results.flat()
-      // Dedupe by id
-      const seen = new Set<string>()
-      setAllEvents(merged.filter(e => {
-        if (seen.has(e.id)) return false
-        seen.add(e.id)
-        return true
-      }))
-    }).finally(() => setLoading(false))
-  }, [sessions])
+  const sessionIds = sessions.map(s => s.sessionId)
+  const { data: allEvents = [], isPending } = useQuery(sessionQueries.manyEvents(sessionIds))
+  const loading = sessionIds.length > 0 && isPending
 
   const derived = useMemo(() => {
     const invocations = extractInvocations(allEvents)

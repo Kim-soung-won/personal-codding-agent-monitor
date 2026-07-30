@@ -1,44 +1,25 @@
-import { useState, useEffect, useRef } from 'react'
-import { useWebSocket } from '@/entities/session'
-import { apiFetch } from '@/shared/api/config'
+import { useQuery } from '@tanstack/react-query'
+import { useWebSocket, sessionQueries } from '@/entities/session'
 import type { NormalizedEvent } from '@/entities/session'
 
 const MAX_BUFFER = 500
 
+/**
+ * 세션 비교용 훅 — 히스토리(react-query)와 라이브(WebSocket)를 합친다.
+ * 히스토리 조회의 abort·중복요청은 react-query 가 sessionId 키로 처리한다.
+ */
 export function useSessionEventsForCompare(sessionId: string | null): {
   events: NormalizedEvent[]
   loading: boolean
 } {
-  const [historicalEvents, setHistoricalEvents] = useState<NormalizedEvent[]>([])
-  const [loading, setLoading] = useState(false)
-  const { events: liveEvents, clearEvents } = useWebSocket(sessionId ? [sessionId] : [])
-  const abortRef = useRef<AbortController | null>(null)
+  const { events: liveEvents } = useWebSocket(sessionId ? [sessionId] : [])
+  const { data = [], isPending } = useQuery({
+    ...sessionQueries.events(sessionId ?? ''),
+    enabled: !!sessionId,
+  })
+  const loading = !!sessionId && isPending
 
-  useEffect(() => {
-    clearEvents()
-    setHistoricalEvents([])
-
-    if (!sessionId) return
-
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    setLoading(true)
-    apiFetch(`/api/sessions/${sessionId}/events`, { signal: controller.signal })
-      .then((r) => r.json())
-      .then((res) => {
-        if (controller.signal.aborted) return
-        if (res.success) setHistoricalEvents((res.data as NormalizedEvent[]).slice(-MAX_BUFFER))
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
-      })
-
-    return () => controller.abort()
-  }, [sessionId, clearEvents])
-
+  const historicalEvents = data.slice(-MAX_BUFFER)
   const seenIds = new Set(historicalEvents.map((e) => e.id))
   const events = [...historicalEvents, ...liveEvents.filter((e) => !seenIds.has(e.id))]
 
