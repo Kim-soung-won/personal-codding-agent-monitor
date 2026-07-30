@@ -1,0 +1,24 @@
+{
+  "name": "claude-code-observer-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "커밋 단위 에이전트 사용 집계를 Claude Code 에서 질의하는 MCP 서버 (observer REST 래핑)",
+  "bin": {
+    "observer-mcp": "src/index.ts"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}
