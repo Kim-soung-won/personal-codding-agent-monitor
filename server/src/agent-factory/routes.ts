@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import type { PrismaClient, Prisma } from '@prisma/client'
+import type { PrismaClient, Prisma, ResourceKind } from '@prisma/client'
 import { ingestRecord, type IncomingRecord, type IngestResult } from './record-service.js'
 
 /** 목록 페이지 크기 상한 — 훅이 실수로 큰 값을 보내도 DB 를 훑지 않게 막는다. */
@@ -370,6 +370,70 @@ export function createAgentFactoryRouter(prisma: PrismaClient): Router {
           outputTokens: Number(r.output_tokens),
           cacheRead: Number(r.cache_read),
           cacheCreation: Number(r.cache_creation),
+        })),
+      })
+    } catch (err) {
+      res.status(500).json({ success: false, error: String(err) })
+    }
+  })
+
+  /**
+   * 개별 호출(ToolInvocation) 이력 — 축별 드릴다운의 원자 데이터.
+   * 필터: kind(AGENT|SKILL|MCP|TOOL) · resource(정확 일치) · plugin(정확 일치).
+   * 각 호출에 그 호출이 나온 커밋(sha·subject·capturedAt)을 조인한다. seq·커밋시각 순.
+   * 예: 서브에이전트 상세 = ?kind=AGENT&resource=change-planner,
+   *     스킬 상세 = ?kind=SKILL&resource=verify, 플러그인 상세 = ?plugin=agent-factory-plugin.
+   */
+  router.get('/invocations', async (req, res) => {
+    try {
+      const where: Prisma.ToolInvocationWhereInput = { rowType: 'ITEM' }
+      if (req.query.kind) where.kind = String(req.query.kind) as ResourceKind
+      if (req.query.resource) where.resource = String(req.query.resource)
+      if (req.query.plugin) where.plugin = String(req.query.plugin)
+
+      const rows = await prisma.toolInvocation.findMany({
+        where,
+        select: {
+          id: true,
+          seq: true,
+          actor: true,
+          kind: true,
+          resource: true,
+          plugin: true,
+          target: true,
+          note: true,
+          isError: true,
+          record: {
+            select: {
+              id: true,
+              commitSha: true,
+              commitSubject: true,
+              capturedAt: true,
+              project: { select: { name: true } },
+            },
+          },
+        },
+        orderBy: [{ record: { capturedAt: 'desc' } }, { seq: 'asc' }],
+        take: 500,
+      })
+
+      res.json({
+        success: true,
+        data: rows.map((r) => ({
+          id: r.id,
+          seq: r.seq,
+          actor: r.actor,
+          kind: r.kind,
+          resource: r.resource,
+          plugin: r.plugin,
+          target: r.target,
+          note: r.note,
+          isError: r.isError,
+          commitId: r.record.id,
+          commitSha: r.record.commitSha,
+          commitSubject: r.record.commitSubject,
+          capturedAt: r.record.capturedAt,
+          project: r.record.project?.name ?? null,
         })),
       })
     } catch (err) {
