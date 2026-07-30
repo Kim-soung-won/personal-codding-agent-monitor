@@ -6,7 +6,7 @@ import { extractInvocations, groupByPlugin } from '@shared/resource-extract'
 import { apiFetch } from '@/shared/api/config'
 import { KIND_HEX as KIND_COLORS } from '@/shared/lib/resourceKind'
 import { calcCostUsd, collectUsage } from '@shared/pricing'
-import type { NormalizedEvent, SessionInfo } from '@/types/events'
+import type { NormalizedEvent, SessionInfo } from '@/entities/session'
 
 function projectLabel(path: string): string {
   const parts = path.split('/').filter(Boolean)

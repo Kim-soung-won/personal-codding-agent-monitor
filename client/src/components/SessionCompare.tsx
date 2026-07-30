@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useSessionEventsForCompare } from '@/hooks/useSessionEventsForCompare'
-import { ThinkingViewer } from '@/components/ThinkingViewer'
-import type { SessionInfo } from '@/types/events'
+import { ThinkingViewer } from '@/entities/session'
+import type { SessionInfo } from '@/entities/session'
 
 interface Props {
   sessions: SessionInfo[]

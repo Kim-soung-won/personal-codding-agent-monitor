@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { useWebSocket } from '@/hooks/useWebSocket'
+import { useWebSocket } from '@/entities/session'
 import { apiFetch } from '@/shared/api/config'
-import type { NormalizedEvent } from '@/types/events'
+import type { NormalizedEvent } from '@/entities/session'
 
 const MAX_BUFFER = 500
 
