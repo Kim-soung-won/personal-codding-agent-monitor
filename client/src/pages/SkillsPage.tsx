@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { PageShell } from '@/shared/ui/PageShell'
 import { StatCard } from '@/shared/ui/StatCard'
 import { RankTable, type Column } from '@/shared/ui/RankTable'
-import * as api from '@/lib/agentFactoryApi'
-import type { SkillStatRow } from '@/types/agentFactory'
+import * as api from '@/entities/commit-record'
+import type { SkillStatRow } from '@/entities/commit-record'
 
 export function SkillsPage() {
   const [rows, setRows] = useState<SkillStatRow[]>([])

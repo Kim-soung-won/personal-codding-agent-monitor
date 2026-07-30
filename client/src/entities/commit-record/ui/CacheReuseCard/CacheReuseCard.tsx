@@ -1,4 +1,4 @@
-import type { SessionHygiene } from '@/types/agentFactory'
+import type { SessionHygiene } from '@/entities/commit-record/model/agentFactory'
 import { compactTokens } from '@/shared/lib/format'
 import { cn } from '@/shared/lib/utils'
 

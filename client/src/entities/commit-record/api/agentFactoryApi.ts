@@ -16,7 +16,7 @@ import type {
   RecordPage,
   SignalStatRow,
   UserRef,
-} from '@/types/agentFactory'
+} from '@/entities/commit-record/model/agentFactory'
 
 function qs(params: Record<string, string | number | null | undefined>): string {
   const sp = new URLSearchParams()

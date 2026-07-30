@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { PageShell } from "@/shared/ui/PageShell";
 import { StatCard } from "@/shared/ui/StatCard";
 import { Prose } from "@/shared/ui/Prose";
-import { CacheReuseCard } from "@/components/ui/CacheReuseCard";
+import { CacheReuseCard } from "@/entities/commit-record";
 import { cn } from "@/shared/lib/utils";
 import {
   compactTokens,
@@ -11,7 +11,7 @@ import {
   estimateCostUsd,
   fmtUsd,
 } from "@/shared/lib/format";
-import * as api from "@/lib/agentFactoryApi";
+import * as api from "@/entities/commit-record";
 import {
   AXIS_LABEL,
   type CommitRecordDetail,
@@ -20,7 +20,7 @@ import {
   type RecordAgentRow,
   type SessionHygiene,
   type ToolResultSpike,
-} from "@/types/agentFactory";
+} from "@/entities/commit-record";
 
 // 안티패턴 경고 임계치. 커밋 델타 규모에 맞춘 경험값 — 넘으면 주의로 표시한다.
 const SLOPE_WARN = 40000;

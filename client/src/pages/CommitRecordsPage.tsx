@@ -3,14 +3,14 @@ import { Link } from 'react-router-dom'
 import { PageShell } from '@/shared/ui/PageShell'
 import { StatCard } from '@/shared/ui/StatCard'
 import { cn } from '@/shared/lib/utils'
-import * as api from '@/lib/agentFactoryApi'
+import * as api from '@/entities/commit-record'
 import type {
   AgentStatRow,
   CommitRecordSummary,
   ProjectRef,
   SignalStatRow,
   UserRef,
-} from '@/types/agentFactory'
+} from '@/entities/commit-record'
 
 function daysAgo(n: number): string {
   const d = new Date()

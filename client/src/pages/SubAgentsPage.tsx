@@ -3,8 +3,8 @@ import { PageShell } from '@/shared/ui/PageShell'
 import { StatCard } from '@/shared/ui/StatCard'
 import { RankTable, type Column } from '@/shared/ui/RankTable'
 import { compactTokens } from '@/shared/lib/format'
-import * as api from '@/lib/agentFactoryApi'
-import type { AgentStatRow } from '@/types/agentFactory'
+import * as api from '@/entities/commit-record'
+import type { AgentStatRow } from '@/entities/commit-record'
 
 export function SubAgentsPage() {
   const [rows, setRows] = useState<AgentStatRow[]>([])
