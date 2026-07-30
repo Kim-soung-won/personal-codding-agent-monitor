@@ -65,6 +65,21 @@ describe('parseRecord — 신호', () => {
     expect(pos!.excerpt).toBe('좋아 착수해줘')
     expect(pos!.turnRef).toBe('u22')
   })
+
+  it('본문에 반대 극성 단어가 섞여도 선두 이모지로 극성을 판정한다', () => {
+    // 긍정 불릿인데 산문에 "부정/긍정" 이 등장 — 단어 매칭이면 NEGATIVE 로 오분류된다.
+    const md = [
+      '## 신호',
+      '',
+      '- **🟢 긍정(입력):** 없음. (사용자 "커밋 진행해줘"는 중단 지시이지 부정/긍정 감정 마커는 아니다.)',
+    ].join('\n')
+    const r = parseRecord(md)
+    expect(r.signals).toHaveLength(1)
+    expect(r.signals[0].polarity).toBe('POSITIVE')
+    // note 에서 선두 마커(🟢 긍정(입력):)는 걷어낸다.
+    expect(r.signals[0].note).not.toMatch(/^🟢?\s*긍정/)
+    expect(r.signals[0].note).toMatch(/^없음/)
+  })
 })
 
 describe('parseRecord — 사용 내역 표', () => {

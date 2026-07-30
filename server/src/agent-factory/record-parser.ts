@@ -190,11 +190,20 @@ function parseSignals(section: string | undefined, warnings: string[]): ParsedSi
   for (const block of blocks) {
     if (!/^\s*-\s+\*\*/.test(block)) continue
 
-    const polarity: SignalPolarity | null = /🔴|부정/.test(block)
-      ? 'NEGATIVE'
-      : /🟢|긍정/.test(block)
-        ? 'POSITIVE'
-        : null
+    // 극성은 불릿 선두의 이모지 마커가 권위다. 본문에 "부정/긍정 감정 마커는 아니다"처럼
+    // 반대 극성 단어가 산문으로 섞일 수 있어, 단어를 아무 데서나 매칭하면 오분류된다.
+    // → 이모지를 우선 보고, 이모지가 없을 때만 불릿 머리의 단어로 폴백한다.
+    const hasNeg = block.includes('🔴')
+    const hasPos = block.includes('🟢')
+    let polarity: SignalPolarity | null = null
+    if (hasNeg && !hasPos) polarity = 'NEGATIVE'
+    else if (hasPos && !hasNeg) polarity = 'POSITIVE'
+    else {
+      // 이모지 없음(또는 둘 다) — 불릿 머리(`- ** ` 직후)의 단어로만 판정한다.
+      const head = block.replace(/^\s*-\s+\*\*\s*/, '')
+      if (/^부정/.test(head)) polarity = 'NEGATIVE'
+      else if (/^긍정/.test(head)) polarity = 'POSITIVE'
+    }
     if (!polarity) continue
 
     // 채널은 마커에 명시된다. 없으면 rubric 기본값(부정=출력, 긍정=입력)을 따른다.
@@ -213,13 +222,21 @@ function parseSignals(section: string | undefined, warnings: string[]): ParsedSi
     const turn = /\(\s*(u\d+)\s*\)/i.exec(block)
     const quote = /`([^`]+)`/.exec(block)
 
+    // 뱃지가 극성·채널을 이미 보이므로, note 에서 선두 마커(`🔴 부정(출력):`)는 걷어낸다.
+    // 선두의 비-한글(이모지·공백)을 먹고 부정/긍정(채널) 콜론까지 제거 — 콜론을 앵커로 요구해
+    // 마커가 아닌 문장을 잘못 자르지 않는다.
+    const note =
+      plain(block.replace(/^\s*-\s+/, ''))
+        .replace(/^[^가-힣]*(?:부정|긍정)\s*(?:\([^)]*\))?\s*[:：]\s*/, '')
+        .trim() || null
+
     signals.push({
       polarity,
       channel,
       verdict: confirmedCount === 0 ? 'FALSE_POSITIVE' : 'CONFIRMED',
       turnRef: turn ? turn[1] : null,
       excerpt: quote ? quote[1] : null,
-      note: plain(block.replace(/^\s*-\s+/, '')) || null,
+      note,
       flaggedCount: flagged ? Number(flagged[1] ?? flagged[2]) : null,
       confirmedCount,
     })

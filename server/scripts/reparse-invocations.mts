@@ -1,7 +1,7 @@
 /**
- * 일회성 재파싱 — 기존 레코드의 rawMarkdown 을 새 파서로 다시 읽어 ToolInvocation 을 재생성한다.
- * plugin 채우기(parser 수정) 를 기존 적재분에 소급 적용하려는 목적. ToolInvocation 만 건드리고
- * 다른 자식 행(agent·signal·feedback·hygiene)은 그대로 둔다. 멱등 — 여러 번 돌려도 안전하다.
+ * 일회성 재파싱 — 기존 레코드의 rawMarkdown 을 새 파서로 다시 읽어 ToolInvocation·Signal 을
+ * 재생성한다. 파서 수정(plugin 채우기, 신호 극성/노트 정정)을 기존 적재분에 소급 적용하려는
+ * 목적. 이 두 자식만 건드리고 나머지(agent·feedback·hygiene)는 그대로 둔다. 멱등 — 반복 안전.
  *
  * 실행: npx tsx scripts/reparse-invocations.mts
  */
@@ -25,12 +25,16 @@ async function main() {
 
     await prisma.$transaction([
       prisma.toolInvocation.deleteMany({ where: { recordId: rec.id } }),
+      prisma.signal.deleteMany({ where: { recordId: rec.id } }),
       ...(parsed.invocations.length > 0
         ? [
             prisma.toolInvocation.createMany({
               data: parsed.invocations.map((i) => ({ recordId: rec.id, ...i })),
             }),
           ]
+        : []),
+      ...(parsed.signals.length > 0
+        ? [prisma.signal.createMany({ data: parsed.signals.map((s) => ({ recordId: rec.id, ...s })) })]
         : []),
     ])
     touched++
