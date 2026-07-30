@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { cn } from '@/lib/utils'
-import { RESOURCE_KINDS, KIND_LABEL, type ResourceKind } from '@/lib/resourceKind'
+import { cn } from '@/shared/lib/utils'
+import { RESOURCE_KINDS, KIND_LABEL, type ResourceKind } from '@/shared/lib/resourceKind'
 
 export interface SelectOption {
   value: number

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { useTheme } from '@/hooks/useTheme'
-import { cn } from '@/lib/utils'
+import { useTheme } from '@/shared/lib/useTheme'
+import { cn } from '@/shared/lib/utils'
 
 interface NavItem {
   label: string

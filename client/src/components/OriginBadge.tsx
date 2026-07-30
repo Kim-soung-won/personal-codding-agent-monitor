@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils'
+import { cn } from '@/shared/lib/utils'
 import type { EventOrigin } from '@/types/events'
 
 interface Props {

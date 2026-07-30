@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { getWsUrl, getAuthToken } from '@/lib/config'
+import { getWsUrl, getAuthToken } from '@/shared/api/config'
 import type { WsMessage, NormalizedEvent } from '@/types/events'
 
 const MAX_BUFFER = 500

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useEffect, useState } from 'react'
-import { cn } from '@/lib/utils'
+import { cn } from '@/shared/lib/utils'
 import { groupChatTurns } from '@/lib/groupChatTurns'
 import type { AssistantBlock, AssistantBlockCategory, ChatTurn, TurnUsage } from '@/lib/groupChatTurns'
 import type { NormalizedEvent } from '@/types/events'

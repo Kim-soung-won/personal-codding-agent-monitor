@@ -3,7 +3,7 @@
  * apiFetch(Bearer 자동) 위에서만 동작하며, 실패 시 던지지 않고 빈 값을 돌려준다(방어적).
  */
 
-import { apiFetch } from '@/lib/config'
+import { apiFetch } from '@/shared/api/config'
 import type {
   AgentStatRow,
   CommitRecordDetail,

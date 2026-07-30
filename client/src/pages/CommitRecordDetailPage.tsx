@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { PageShell } from "@/components/ui/PageShell";
-import { StatCard } from "@/components/ui/StatCard";
-import { Prose } from "@/components/ui/Prose";
+import { PageShell } from "@/shared/ui/PageShell";
+import { StatCard } from "@/shared/ui/StatCard";
+import { Prose } from "@/shared/ui/Prose";
 import { CacheReuseCard } from "@/components/ui/CacheReuseCard";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/lib/utils";
 import {
   compactTokens,
   contextReuseRate,
   estimateCostUsd,
   fmtUsd,
-} from "@/lib/format";
+} from "@/shared/lib/format";
 import * as api from "@/lib/agentFactoryApi";
 import {
   AXIS_LABEL,

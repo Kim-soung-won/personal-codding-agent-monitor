@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
-import { cn } from '@/lib/utils'
-import { compactTokens } from '@/lib/format'
+import { cn } from '@/shared/lib/utils'
+import { compactTokens } from '@/shared/lib/format'
 import { BADGE_COLORS } from '@/lib/categories'
 import { CategoryBadge } from '@/components/CategoryBadge'
 import { OriginBadge } from '@/components/OriginBadge'

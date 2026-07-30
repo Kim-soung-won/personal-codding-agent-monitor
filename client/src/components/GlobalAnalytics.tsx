@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { BarChart, DatelineChart, DoughnutChart } from '@we/ai-template'
 import type { BarChartView, CategoryDoughnutChartView, DateLineChartView } from '@we/ai-template'
-import { useTheme } from '@/hooks/useTheme'
+import { useTheme } from '@/shared/lib/useTheme'
 import { extractInvocations, groupByPlugin } from '@shared/resource-extract'
-import { apiFetch } from '@/lib/config'
-import { KIND_HEX as KIND_COLORS } from '@/lib/resourceKind'
+import { apiFetch } from '@/shared/api/config'
+import { KIND_HEX as KIND_COLORS } from '@/shared/lib/resourceKind'
 import { calcCostUsd, collectUsage } from '@shared/pricing'
 import type { NormalizedEvent, SessionInfo } from '@/types/events'
 

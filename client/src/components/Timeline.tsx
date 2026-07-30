@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { cn } from '@/lib/utils'
+import { cn } from '@/shared/lib/utils'
 import { CategoryBadge } from '@/components/CategoryBadge'
 import { DOT_COLORS } from '@/lib/categories'
 import type { NormalizedEvent, EventCategory } from '@/types/events'

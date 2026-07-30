@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { PageShell } from '@/components/ui/PageShell'
-import { StatCard } from '@/components/ui/StatCard'
-import { cn } from '@/lib/utils'
+import { PageShell } from '@/shared/ui/PageShell'
+import { StatCard } from '@/shared/ui/StatCard'
+import { cn } from '@/shared/lib/utils'
 import * as api from '@/lib/agentFactoryApi'
 import type {
   AgentStatRow,

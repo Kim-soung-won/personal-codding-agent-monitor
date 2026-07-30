@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PageShell } from '@/components/ui/PageShell'
-import { StatCard } from '@/components/ui/StatCard'
-import { RankTable, type Column } from '@/components/ui/RankTable'
+import { PageShell } from '@/shared/ui/PageShell'
+import { StatCard } from '@/shared/ui/StatCard'
+import { RankTable, type Column } from '@/shared/ui/RankTable'
 import * as api from '@/lib/agentFactoryApi'
 import type { SkillStatRow } from '@/types/agentFactory'
 
