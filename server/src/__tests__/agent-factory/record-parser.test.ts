@@ -97,6 +97,33 @@ describe('parseRecord — 사용 내역 표', () => {
     expect(failed[0].resource).toBe('subagent-creator')
     expect(failed[0].note).toContain('권한거부')
   })
+
+  it('AGENT 행의 plugin 을 프론트매터 agent→plugin 맵으로 backfill 한다', () => {
+    const r = parseRecord(REAL_RECORD)
+    // 셀은 `Agent → subagent-evaluator`(비한정)지만 frontmatter 가 claude-code-docs-plugin 로 한정.
+    const agentRows = r.invocations.filter((i) => i.kind === 'AGENT')
+    expect(agentRows.length).toBeGreaterThan(0)
+    expect(agentRows.every((i) => i.plugin === 'claude-code-docs-plugin')).toBe(true)
+  })
+
+  it('한정 이름(plugin:name)은 셀에서 직접 plugin 을 분해한다', () => {
+    const md = [
+      '## 에이전트·도구 사용 내역',
+      '',
+      '| 순서 | 주체 | 도구/에이전트 | 대상 | 비고 |',
+      '|---|---|---|---|---|',
+      '| 1 | main | Skill → frontend-support-plugin:test-writer | 모듈 테스트 | 정상 |',
+      '| 2 | main | Agent → planning-plugin:change-planner | 계획 | 정상 |',
+    ].join('\n')
+    const r = parseRecord(md)
+    const items = r.invocations.filter((i) => i.rowType === 'ITEM')
+    expect(items).toContainEqual(
+      expect.objectContaining({ kind: 'SKILL', resource: 'test-writer', plugin: 'frontend-support-plugin' }),
+    )
+    expect(items).toContainEqual(
+      expect.objectContaining({ kind: 'AGENT', resource: 'change-planner', plugin: 'planning-plugin' }),
+    )
+  })
 })
 
 describe('parseRecord — 피드백', () => {

@@ -231,28 +231,53 @@ function parseSignals(section: string | undefined, warnings: string[]): ParsedSi
 
 // ─── 에이전트·도구 사용 내역 표 ─────────────────────────────────────────────
 
-/** `Agent → subagent-evaluator`, `Skill`, `Edit×29 · Bash×32` 등 도구 셀을 해석한다. */
-function classifyResource(cell: string): { kind: ResourceKind | null; resource: string } {
+/**
+ * `Agent → subagent-evaluator`, `Skill → plugin:skill`, `Edit×29 · Bash×32` 등 도구 셀을 해석한다.
+ * AGENT·SKILL 은 이름이 `plugin:name` 으로 한정될 수 있어 plugin 을 분해해 함께 돌려준다
+ * (호출 단위 플러그인 드릴다운의 근거). 한정되지 않은 이름은 plugin=null.
+ */
+function classifyResource(cell: string): {
+  kind: ResourceKind | null
+  resource: string
+  plugin: string | null
+} {
   const text = cell.trim()
 
   // "Agent → subagent-evaluator" / "Agent(subagent_type)"
   const arrow = /^Agent\s*(?:→|->)\s*(.+)$/i.exec(text)
-  if (arrow) return { kind: 'AGENT', resource: arrow[1].trim() }
+  if (arrow) {
+    const { plugin, agent } = splitQualifiedAgent(arrow[1].trim())
+    return { kind: 'AGENT', resource: agent, plugin }
+  }
   const paren = /^Agent\s*\((.+)\)$/i.exec(text)
-  if (paren) return { kind: 'AGENT', resource: paren[1].trim() }
+  if (paren) {
+    const { plugin, agent } = splitQualifiedAgent(paren[1].trim())
+    return { kind: 'AGENT', resource: agent, plugin }
+  }
 
   const skill = /^Skill\s*(?:→|->|\()\s*([^)]+)\)?$/i.exec(text)
-  if (skill) return { kind: 'SKILL', resource: skill[1].trim() }
+  if (skill) {
+    const { plugin, agent } = splitQualifiedAgent(skill[1].trim())
+    return { kind: 'SKILL', resource: agent, plugin }
+  }
 
-  if (/^mcp__/.test(text)) return { kind: 'MCP', resource: text }
+  if (/^mcp__/.test(text)) return { kind: 'MCP', resource: text, plugin: null }
 
   // 단일 내장 도구 이름만 있는 경우(집계 셀은 구분자가 있어 걸리지 않는다)
-  if (/^[A-Z][A-Za-z]+$/.test(text)) return { kind: 'TOOL', resource: text }
+  if (/^[A-Z][A-Za-z]+$/.test(text)) return { kind: 'TOOL', resource: text, plugin: null }
 
-  return { kind: null, resource: text }
+  return { kind: null, resource: text, plugin: null }
 }
 
-function parseInvocations(section: string | undefined, warnings: string[]): ParsedInvocation[] {
+/**
+ * 사용 내역 표를 행으로 읽는다. agentPlugin 은 프론트매터 `agents:`(plugin:agent) 에서 만든
+ * agent 이름→plugin 맵으로, 표 셀이 plugin 을 안 담은 AGENT 행의 plugin 을 backfill 한다.
+ */
+function parseInvocations(
+  section: string | undefined,
+  warnings: string[],
+  agentPlugin: Map<string, string> = new Map(),
+): ParsedInvocation[] {
   if (!section) return []
 
   const rows: ParsedInvocation[] = []
@@ -275,9 +300,13 @@ function parseInvocations(section: string | undefined, warnings: string[]): Pars
     const seqNum = Number(seqCell)
     const isAggregate = !Number.isFinite(seqNum) || seqCell === '' || /^[—–-]$/.test(seqCell)
 
-    const { kind, resource } = isAggregate
-      ? { kind: null, resource: resourceCell }
+    const classified = isAggregate
+      ? { kind: null as ResourceKind | null, resource: resourceCell, plugin: null as string | null }
       : classifyResource(resourceCell)
+    const { kind, resource } = classified
+    // plugin: 셀에서 분해한 값 우선, 없으면 AGENT 는 프론트매터 맵으로 backfill.
+    const plugin =
+      classified.plugin ?? (kind === 'AGENT' ? agentPlugin.get(resource) ?? null : null)
 
     const note = noteCell ?? null
     rows.push({
@@ -286,7 +315,7 @@ function parseInvocations(section: string | undefined, warnings: string[]): Pars
       actor: actorCell || 'main',
       kind,
       resource,
-      plugin: null,
+      plugin,
       target: targetCell || null,
       note: note || null,
       // 비고에 오류·거부·재시도 흔적이 있으면 실패로 본다(정상 표기와 구분).
@@ -405,6 +434,12 @@ export function parseRecord(markdown: string): ParsedRecord {
     }
   }
 
+  // AGENT invocation 행의 plugin backfill 용 — 이름→plugin(있는 것만).
+  const agentPlugin = new Map<string, string>()
+  for (const a of agents) {
+    if (a.plugin) agentPlugin.set(a.agent, a.plugin)
+  }
+
   const summary = sections.get('요약') ?? null
   const costNote = sections.get('비용메모') ?? null
 
@@ -422,7 +457,7 @@ export function parseRecord(markdown: string): ParsedRecord {
     costNote: costNote ? plain(costNote) : null,
     agents,
     signals: parseSignals(sections.get('신호'), warnings),
-    invocations: parseInvocations(sections.get('에이전트·도구사용내역'), warnings),
+    invocations: parseInvocations(sections.get('에이전트·도구사용내역'), warnings, agentPlugin),
     feedback: parseFeedback(sections.get('피드백'), warnings),
     warnings,
   }
