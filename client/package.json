@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.0.0",
+    "@tanstack/react-query": "^5.101.4",
     "@we/ai-template": "^0.6.7",
+    "axios": "^1.19.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "lucide-react": "^0.400.0",
@@ -20,7 +22,9 @@
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.80.0",
     "react-router-dom": "^7.17.0",
-    "tailwind-merge": "^2.0.0"
+    "tailwind-merge": "^2.0.0",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
