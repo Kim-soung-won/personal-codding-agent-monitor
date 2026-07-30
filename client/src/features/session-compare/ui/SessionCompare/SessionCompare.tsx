@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useSessionEventsForCompare } from '@/hooks/useSessionEventsForCompare'
+import { useSessionEventsForCompare } from '@/features/session-compare/api/useSessionEventsForCompare'
 import { ThinkingViewer } from '@/entities/session'
 import type { SessionInfo } from '@/entities/session'
 
