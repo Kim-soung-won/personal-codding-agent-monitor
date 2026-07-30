@@ -252,6 +252,52 @@ export function createAgentFactoryRouter(prisma: PrismaClient): Router {
   })
 
   /**
+   * 스킬별 사용 빈도 집계 — kind=SKILL 인 ToolInvocation 을 스킬명으로 묶는다.
+   * 스킬은 토큰 계량치가 없으므로(RecordAgent 와 달리) 빈도 축으로 본다:
+   * invocations(총 호출)·commits(등장 커밋 수)·errors. "어떤 스킬을 얼마나 자주 쓰나".
+   */
+  router.get('/stats/skills', async (_req, res) => {
+    try {
+      const [total, errs, commitPairs] = await Promise.all([
+        prisma.toolInvocation.groupBy({
+          by: ['resource', 'plugin'],
+          where: { kind: 'SKILL' },
+          _count: { id: true },
+          orderBy: { _count: { id: 'desc' } },
+        }),
+        prisma.toolInvocation.groupBy({
+          by: ['resource'],
+          where: { kind: 'SKILL', isError: true },
+          _count: { id: true },
+        }),
+        // 스킬별 고유 커밋 수 — (resource, recordId) 유일쌍을 세어 복원한다.
+        prisma.toolInvocation.findMany({
+          where: { kind: 'SKILL' },
+          select: { resource: true, recordId: true },
+          distinct: ['resource', 'recordId'],
+        }),
+      ])
+      const errMap = new Map(errs.map((e) => [e.resource, e._count.id]))
+      const commitMap = new Map<string, number>()
+      for (const c of commitPairs) {
+        commitMap.set(c.resource, (commitMap.get(c.resource) ?? 0) + 1)
+      }
+      res.json({
+        success: true,
+        data: total.map((r) => ({
+          skill: r.resource,
+          plugin: r.plugin,
+          invocations: r._count.id,
+          commits: commitMap.get(r.resource) ?? 0,
+          errors: errMap.get(r.resource) ?? 0,
+        })),
+      })
+    } catch (err) {
+      res.status(500).json({ success: false, error: String(err) })
+    }
+  })
+
+  /**
    * 감정 신호 집계. 확정 건수와 함께 **오탐 건수**를 낸다 —
    * distill 감지기의 정밀도 자체가 추적 대상이기 때문이다.
    */

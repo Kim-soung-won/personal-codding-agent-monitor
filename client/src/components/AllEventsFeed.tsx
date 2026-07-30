@@ -1,5 +1,5 @@
-import { CategoryBadge } from './CategoryBadge'
-import type { NormalizedEvent } from '../types/events'
+import { CategoryBadge } from '@/components/CategoryBadge'
+import type { NormalizedEvent } from '@/types/events'
 
 interface Props {
   events: NormalizedEvent[]

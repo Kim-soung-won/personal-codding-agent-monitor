@@ -1,24 +1,25 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { useWebSocket } from './hooks/useWebSocket'
-import { useTheme } from './hooks/useTheme'
-import { ChatView } from './components/ChatView'
-import { ThinkingViewer } from './components/ThinkingViewer'
-import { TokenDashboard } from './components/TokenDashboard'
-import { ResourcesPanel } from './components/ResourcesPanel'
-import { WelcomeDashboard } from './components/WelcomeDashboard'
-import { GlobalAnalytics } from './components/GlobalAnalytics'
-import { SessionCompare } from './components/SessionCompare'
-import { SessionTitleBadge } from './components/SessionTitleBadge'
-import { AppShell } from './components/AppShell'
-import { CommitRecordsPage } from './pages/CommitRecordsPage'
-import { CommitRecordDetailPage } from './pages/CommitRecordDetailPage'
-import { SubAgentsPage } from './pages/SubAgentsPage'
-import { PluginsPage } from './pages/PluginsPage'
-import { cn } from './lib/utils'
-import { apiFetch } from './lib/config'
+import { useWebSocket } from '@/hooks/useWebSocket'
+import { useTheme } from '@/hooks/useTheme'
+import { ChatView } from '@/components/ChatView'
+import { ThinkingViewer } from '@/components/ThinkingViewer'
+import { TokenDashboard } from '@/components/TokenDashboard'
+import { ResourcesPanel } from '@/components/ResourcesPanel'
+import { WelcomeDashboard } from '@/components/WelcomeDashboard'
+import { GlobalAnalytics } from '@/components/GlobalAnalytics'
+import { SessionCompare } from '@/components/SessionCompare'
+import { SessionTitleBadge } from '@/components/SessionTitleBadge'
+import { AppShell } from '@/components/AppShell'
+import { CommitRecordsPage } from '@/pages/CommitRecordsPage'
+import { CommitRecordDetailPage } from '@/pages/CommitRecordDetailPage'
+import { SubAgentsPage } from '@/pages/SubAgentsPage'
+import { PluginsPage } from '@/pages/PluginsPage'
+import { SkillsPage } from '@/pages/SkillsPage'
+import { cn } from '@/lib/utils'
+import { apiFetch } from '@/lib/config'
 import { calcCostUsd, collectUsage } from '@shared/pricing'
-import type { NormalizedEvent, SessionInfo } from './types/events'
+import type { NormalizedEvent, SessionInfo } from '@/types/events'
 
 type SessionTab = 'chat' | 'thinking' | 'tokens' | 'resources'
 type ProjectTab = 'thinking' | 'tokens' | 'resources'
@@ -484,6 +485,7 @@ export default function App() {
         <Route path="/records/:id" element={<CommitRecordDetailPage />} />
         <Route path="/subagents" element={<SubAgentsPage />} />
         <Route path="/plugins" element={<PluginsPage />} />
+        <Route path="/skills" element={<SkillsPage />} />
         {/* 참고자료(구 홈) */}
         <Route path="/reference/pricing" element={<HomePage />} />
         {/* 레거시 뷰(Phase 2b-2에서 대시보드로 대체 예정, 현재 URL로 접근 가능) */}

@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react'
-import { cn } from '../lib/utils'
-import { compactTokens } from '../lib/format'
-import { BADGE_COLORS } from '../lib/categories'
-import { CategoryBadge } from './CategoryBadge'
-import { OriginBadge } from './OriginBadge'
-import { SessionSummaryCard } from './SessionSummaryCard'
-import { DiffView } from './DiffView'
-import type { NormalizedEvent, EventCategory } from '../types/events'
+import { cn } from '@/lib/utils'
+import { compactTokens } from '@/lib/format'
+import { BADGE_COLORS } from '@/lib/categories'
+import { CategoryBadge } from '@/components/CategoryBadge'
+import { OriginBadge } from '@/components/OriginBadge'
+import { SessionSummaryCard } from '@/components/SessionSummaryCard'
+import { DiffView } from '@/components/DiffView'
+import type { NormalizedEvent, EventCategory } from '@/types/events'
 
 /** 한 assistant 응답의 토큰 usage. thinking·tool·text 여러 row가 같은 message.id로 공유한다. */
 interface RowUsage {

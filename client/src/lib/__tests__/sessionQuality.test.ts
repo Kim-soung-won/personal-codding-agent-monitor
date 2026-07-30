@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { calcSessionQuality } from '../sessionQuality'
-import type { NormalizedEvent } from '../../types/events'
+import { calcSessionQuality } from '@/lib/sessionQuality'
+import type { NormalizedEvent } from '@/types/events'
 
 let seq = 0
 function ev(raw: unknown): NormalizedEvent {

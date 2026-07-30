@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { cn } from '../../lib/utils'
-import { InfoHint } from './InfoHint'
+import { cn } from '@/lib/utils'
+import { InfoHint } from '@/components/ui/InfoHint'
 
 export type StatTone = 'default' | 'good' | 'warn' | 'bad'
 

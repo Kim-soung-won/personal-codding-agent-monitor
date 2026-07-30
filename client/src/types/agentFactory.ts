@@ -185,6 +185,14 @@ export interface PluginStatRow {
   errors: number
 }
 
+export interface SkillStatRow {
+  skill: string
+  plugin: string | null
+  invocations: number
+  commits: number
+  errors: number
+}
+
 export interface SignalStatRow {
   polarity: SignalPolarity
   verdict: SignalVerdict

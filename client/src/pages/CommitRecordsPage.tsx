@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { PageShell } from '../components/ui/PageShell'
-import { StatCard } from '../components/ui/StatCard'
-import { cn } from '../lib/utils'
-import * as api from '../lib/agentFactoryApi'
+import { PageShell } from '@/components/ui/PageShell'
+import { StatCard } from '@/components/ui/StatCard'
+import { cn } from '@/lib/utils'
+import * as api from '@/lib/agentFactoryApi'
 import type {
   AgentStatRow,
   CommitRecordSummary,
   ProjectRef,
   SignalStatRow,
   UserRef,
-} from '../types/agentFactory'
+} from '@/types/agentFactory'
 
 function daysAgo(n: number): string {
   const d = new Date()

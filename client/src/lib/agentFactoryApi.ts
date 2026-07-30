@@ -3,19 +3,20 @@
  * apiFetch(Bearer 자동) 위에서만 동작하며, 실패 시 던지지 않고 빈 값을 돌려준다(방어적).
  */
 
-import { apiFetch } from './config'
+import { apiFetch } from '@/lib/config'
 import type {
   AgentStatRow,
   CommitRecordDetail,
   DailyTokenRow,
   FeedbackStatRow,
   PluginStatRow,
+  SkillStatRow,
   ProjectRef,
   RecordFilter,
   RecordPage,
   SignalStatRow,
   UserRef,
-} from '../types/agentFactory'
+} from '@/types/agentFactory'
 
 function qs(params: Record<string, string | number | null | undefined>): string {
   const sp = new URLSearchParams()
@@ -69,6 +70,10 @@ export function getAgentStats(): Promise<AgentStatRow[]> {
 
 export function getPluginStats(): Promise<PluginStatRow[]> {
   return get<PluginStatRow[]>('/api/agent-factory/stats/plugins', [])
+}
+
+export function getSkillStats(): Promise<SkillStatRow[]> {
+  return get<SkillStatRow[]>('/api/agent-factory/stats/skills', [])
 }
 
 export function getSignalStats(): Promise<SignalStatRow[]> {

@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { cn } from '../lib/utils'
-import { CategoryBadge } from './CategoryBadge'
-import { DOT_COLORS } from '../lib/categories'
-import type { NormalizedEvent, EventCategory } from '../types/events'
+import { cn } from '@/lib/utils'
+import { CategoryBadge } from '@/components/CategoryBadge'
+import { DOT_COLORS } from '@/lib/categories'
+import type { NormalizedEvent, EventCategory } from '@/types/events'
 
 const TIMELINE_SET = new Set<EventCategory>([
   'context-injection',

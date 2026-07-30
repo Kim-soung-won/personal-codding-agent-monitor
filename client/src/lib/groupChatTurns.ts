@@ -1,4 +1,4 @@
-import type { NormalizedEvent } from '../types/events'
+import type { NormalizedEvent } from '@/types/events'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

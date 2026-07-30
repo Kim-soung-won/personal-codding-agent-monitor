@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PageShell } from '../components/ui/PageShell'
-import { StatCard } from '../components/ui/StatCard'
-import { RankTable, type Column } from '../components/ui/RankTable'
-import { compactTokens } from '../lib/format'
-import * as api from '../lib/agentFactoryApi'
-import type { AgentStatRow } from '../types/agentFactory'
+import { PageShell } from '@/components/ui/PageShell'
+import { StatCard } from '@/components/ui/StatCard'
+import { RankTable, type Column } from '@/components/ui/RankTable'
+import { compactTokens } from '@/lib/format'
+import * as api from '@/lib/agentFactoryApi'
+import type { AgentStatRow } from '@/types/agentFactory'
 
 export function SubAgentsPage() {
   const [rows, setRows] = useState<AgentStatRow[]>([])

@@ -1,17 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { PageShell } from "../components/ui/PageShell";
-import { StatCard } from "../components/ui/StatCard";
-import { Prose } from "../components/ui/Prose";
-import { CacheReuseCard } from "../components/ui/CacheReuseCard";
-import { cn } from "../lib/utils";
+import { PageShell } from "@/components/ui/PageShell";
+import { StatCard } from "@/components/ui/StatCard";
+import { Prose } from "@/components/ui/Prose";
+import { CacheReuseCard } from "@/components/ui/CacheReuseCard";
+import { cn } from "@/lib/utils";
 import {
   compactTokens,
   contextReuseRate,
   estimateCostUsd,
   fmtUsd,
-} from "../lib/format";
-import * as api from "../lib/agentFactoryApi";
+} from "@/lib/format";
+import * as api from "@/lib/agentFactoryApi";
 import {
   AXIS_LABEL,
   type CommitRecordDetail,
@@ -20,7 +20,7 @@ import {
   type RecordAgentRow,
   type SessionHygiene,
   type ToolResultSpike,
-} from "../types/agentFactory";
+} from "@/types/agentFactory";
 
 // 안티패턴 경고 임계치. 커밋 델타 규모에 맞춘 경험값 — 넘으면 주의로 표시한다.
 const SLOPE_WARN = 40000;
@@ -188,49 +188,50 @@ function SessionHygieneSection({ h }: { h: SessionHygiene }) {
               결과보다 비싸다. 아래는 그 재청구 추정 비용(크기 × 잔류 턴)이 큰
               순서다 — 막대가 그 비용, 오른쪽은 잔류 턴과 크기.
             </p>
-            {/* 열 의미를 머리글로 못박는다 — 막대·숫자가 무엇인지 오해를 줄인다 */}
-            <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-wide text-muted-foreground/70">
-              <span className="flex-1">재청구 추정 비용 (최댓값 = 100%)</span>
-              <span className="shrink-0">잔류 · 크기</span>
-            </div>
-            <ul className="space-y-1.5">
+            <p className="mb-2 text-[10px] uppercase tracking-wide text-muted-foreground/70">
+              재청구 추정 비용 순 (막대 = 최댓값 대비)
+            </p>
+            <ul className="space-y-2.5">
               {sortedSpikes.map((s, i) => {
                 const pct = maxCost > 0 ? Math.round((costOf(s) / maxCost) * 100) : 0;
                 // rebilled_tokens 가 오면 재청구 비용을, 없으면(구버전) 크기만 폴백 표기.
                 const hasRebill = s.rebilled_tokens != null;
+                const isUser = s.tool === "user_input";
+                const label = s.tool
+                  ? `${isUser ? "사용자 입력" : s.tool}${s.target ? ` ${s.target}` : ""}`
+                  : "대용량 결과";
                 return (
-                  <li key={i} className="flex items-center gap-2">
-                    <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full bg-warning/60"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                    {/* 원인 라벨 — 무슨 도구가 무엇을 대상으로 만든 결과인지(있을 때만) */}
-                    {s.tool && (
-                      <span className="shrink-0 max-w-[40%] truncate font-mono text-2xs text-foreground/80">
-                        {s.tool === "user_input" ? "사용자 입력" : s.tool}
-                        {s.target ? ` ${s.target}` : ""}
-                        {typeof s.turn === "number" ? ` · t${s.turn}` : ""}
+                  <li key={i} className="space-y-1">
+                    {/* 1줄: 원인 라벨(전폭·잘림) + 핵심 수치 */}
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="min-w-0 flex-1 truncate font-mono text-2xs text-foreground/80">
+                        {typeof s.turn === "number" && (
+                          <span className={cn("mr-1.5 font-semibold", isUser ? "text-warning" : "text-muted-foreground")}>
+                            t{s.turn}
+                          </span>
+                        )}
+                        {label}
                       </span>
-                    )}
-                    <span className="shrink-0 text-2xs tabular-nums">
-                      {hasRebill ? (
-                        <>
-                          약 {s.rebilled_tokens!.toLocaleString()}토큰 재청구{" "}
-                          <span className="text-muted-foreground">
-                            · {s.turns_resident ?? 0}턴 잔류 · {s.len.toLocaleString()}자
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          {s.len.toLocaleString()}자{" "}
-                          <span className="text-muted-foreground">
-                            · 약 {approxTokens(s.len).toLocaleString()}토큰
-                          </span>
-                        </>
-                      )}
-                    </span>
+                      <span className="shrink-0 text-xs font-semibold tabular-nums">
+                        {hasRebill
+                          ? `약 ${s.rebilled_tokens!.toLocaleString()} tok`
+                          : `${s.len.toLocaleString()}자`}
+                      </span>
+                    </div>
+                    {/* 2줄: 전폭 막대 + 부가정보 */}
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-warning/60"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                        {hasRebill
+                          ? `${s.turns_resident ?? 0}턴 잔류 · ${s.len.toLocaleString()}자`
+                          : `약 ${approxTokens(s.len).toLocaleString()}토큰`}
+                      </span>
+                    </div>
                   </li>
                 );
               })}
@@ -582,8 +583,11 @@ export function CommitRecordDetailPage() {
                     <td className="py-1.5 pr-3">
                       <InvocationCell row={row} />
                     </td>
-                    <td className="py-1.5 pr-3 text-muted-foreground">
-                      {row.target ?? "—"}
+                    {/* 긴 Bash 명령이 행을 늘리지 않게 한 줄로 자른다 — 전문은 title 로 */}
+                    <td className="py-1.5 pr-3 text-muted-foreground max-w-xs">
+                      <span className="block truncate" title={row.target ?? undefined}>
+                        {row.target ?? "—"}
+                      </span>
                     </td>
                     <td
                       className={cn(

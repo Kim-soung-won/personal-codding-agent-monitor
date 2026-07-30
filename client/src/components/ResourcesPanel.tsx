@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { cn } from '../lib/utils'
-import { KIND_STYLES } from '../lib/resourceKind'
-import type { NormalizedEvent } from '../types/events'
+import { cn } from '@/lib/utils'
+import { KIND_STYLES } from '@/lib/resourceKind'
+import type { NormalizedEvent } from '@/types/events'
 import {
   extractToolCalls, toResourceInvocation, groupInvocations, groupByPlugin,
 } from '@shared/resource-extract'

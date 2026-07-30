@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { useTheme } from '../hooks/useTheme'
-import { cn } from '../lib/utils'
+import { useTheme } from '@/hooks/useTheme'
+import { cn } from '@/lib/utils'
 
 interface NavItem {
   label: string
@@ -16,6 +16,7 @@ const NAV: NavItem[] = [
   { label: '커밋 기록', to: '/', badge: 'NEW', icon: <IconGauge /> },
   { label: 'Plugins', to: '/plugins', icon: <IconPlug /> },
   { label: 'Sub-agents', to: '/subagents', icon: <IconAgent /> },
+  { label: 'Skills', to: '/skills', icon: <IconSpark /> },
   { label: 'Projects', to: '/projects', icon: <IconFolder /> },
   { label: 'Compare', to: '/compare', icon: <IconCompare /> },
   { label: 'Pricing 참고', to: '/reference/pricing', icon: <IconBook /> },
@@ -124,5 +125,6 @@ function IconAgent() { return svg(<><rect x="4" y="8" width="16" height="12" rx=
 function IconFolder() { return svg(<path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />) }
 function IconCompare() { return svg(<><path strokeLinecap="round" d="M12 3v18M6 8l-3 3 3 3M18 8l3 3-3 3" /></>) }
 function IconBook() { return svg(<path strokeLinecap="round" strokeLinejoin="round" d="M4 5a2 2 0 012-2h12v16H6a2 2 0 00-2 2V5zM8 3v14" />) }
+function IconSpark() { return svg(<path strokeLinecap="round" strokeLinejoin="round" d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5z" />) }
 function IconSun() { return svg(<><circle cx="12" cy="12" r="4" /><path strokeLinecap="round" d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" /></>) }
 function IconMoon() { return svg(<path strokeLinecap="round" d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z" />) }

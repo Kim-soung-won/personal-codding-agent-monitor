@@ -1,5 +1,5 @@
-import { cn } from '../lib/utils'
-import { BADGE_COLORS } from '../lib/categories'
+import { cn } from '@/lib/utils'
+import { BADGE_COLORS } from '@/lib/categories'
 
 interface Props {
   category: string

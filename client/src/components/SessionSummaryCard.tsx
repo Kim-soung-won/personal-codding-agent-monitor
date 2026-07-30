@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useSessionSummary } from '../hooks/useSessionSummary'
-import type { NormalizedEvent } from '../types/events'
+import { useSessionSummary } from '@/hooks/useSessionSummary'
+import type { NormalizedEvent } from '@/types/events'
 
 interface Props {
   events: NormalizedEvent[]

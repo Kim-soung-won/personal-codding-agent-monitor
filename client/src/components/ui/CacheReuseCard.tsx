@@ -1,6 +1,6 @@
-import type { SessionHygiene } from '../../types/agentFactory'
-import { compactTokens } from '../../lib/format'
-import { cn } from '../../lib/utils'
+import type { SessionHygiene } from '@/types/agentFactory'
+import { compactTokens } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 /**
  * "캐시 재사용 — 왜 M 단위인가" 카드.

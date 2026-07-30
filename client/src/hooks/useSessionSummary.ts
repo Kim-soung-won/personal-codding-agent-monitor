@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { NormalizedEvent } from '../types/events'
+import type { NormalizedEvent } from '@/types/events'
 
 interface SessionSummaryItem {
   hookName: string

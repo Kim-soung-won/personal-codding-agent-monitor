@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from 'react'
-import { cn } from '../../lib/utils'
+import { cn } from '@/lib/utils'
 
 /**
  * LLM 이 쓴 마크다운 본문을 읽기 좋게 렌더한다.

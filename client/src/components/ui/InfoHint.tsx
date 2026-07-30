@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { cn } from '../../lib/utils'
+import { cn } from '@/lib/utils'
 
 interface Props {
   /** 툴팁 본문 — 지표가 무엇을 뜻하고 왜 보는지 사용자 관점 설명. */

@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { getApiBase, getAuthToken, setAuthToken } from '../lib/config'
+import { getApiBase, getAuthToken, setAuthToken } from '@/lib/config'
 
 interface Props {
   children: ReactNode

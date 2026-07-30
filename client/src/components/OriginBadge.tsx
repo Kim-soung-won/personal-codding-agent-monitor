@@ -1,5 +1,5 @@
-import { cn } from '../lib/utils'
-import type { EventOrigin } from '../types/events'
+import { cn } from '@/lib/utils'
+import type { EventOrigin } from '@/types/events'
 
 interface Props {
   origin: EventOrigin | undefined

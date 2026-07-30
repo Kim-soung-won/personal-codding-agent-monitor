@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { useSessionSummary } from '../useSessionSummary'
-import type { NormalizedEvent } from '../../types/events'
+import { useSessionSummary } from '@/hooks/useSessionSummary'
+import type { NormalizedEvent } from '@/types/events'
 
 function makeHookSuccessEvent(hookName: string, stdout: unknown): NormalizedEvent {
   return {

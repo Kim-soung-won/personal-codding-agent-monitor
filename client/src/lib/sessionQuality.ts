@@ -1,4 +1,4 @@
-import type { NormalizedEvent } from '../types/events'
+import type { NormalizedEvent } from '@/types/events'
 
 /**
  * 세션의 '낭비 신호'를 집계한다.

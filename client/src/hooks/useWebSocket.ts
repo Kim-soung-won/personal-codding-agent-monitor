@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { getWsUrl, getAuthToken } from '../lib/config'
-import type { WsMessage, NormalizedEvent } from '../types/events'
+import { getWsUrl, getAuthToken } from '@/lib/config'
+import type { WsMessage, NormalizedEvent } from '@/types/events'
 
 const MAX_BUFFER = 500
 

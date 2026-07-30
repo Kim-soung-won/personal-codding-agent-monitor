@@ -1,5 +1,5 @@
-import { cn } from '../lib/utils'
-import type { SessionQuality } from '../lib/sessionQuality'
+import { cn } from '@/lib/utils'
+import type { SessionQuality } from '@/lib/sessionQuality'
 
 interface Props {
   quality: SessionQuality

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { groupChatTurns, isRealUserInput } from '../groupChatTurns'
-import type { NormalizedEvent } from '../../types/events'
+import { groupChatTurns, isRealUserInput } from '@/lib/groupChatTurns'
+import type { NormalizedEvent } from '@/types/events'
 
 let seq = 0
 function makeEvent(
