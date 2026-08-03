@@ -47,7 +47,7 @@ export function DateLineChart({
       },
       legend: legendOption(theme, multi),
       xAxis: { ...categoryAxisOption(theme, labelRotate), data: data.timestamps, boundaryGap: false },
-      yAxis: valueAxisOption(theme, unit, valueFormat),
+      yAxis: valueAxisOption(theme, { unit, format: valueFormat, integer: !valueFormat }),
       series: data.series.map((s) => ({
         type: 'line' as const,
         name: s.name,

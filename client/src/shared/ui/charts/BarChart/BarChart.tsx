@@ -14,10 +14,26 @@ interface Props {
   unit?: string
   /** 카테고리 라벨 회전 각도. 라벨이 길고 많을 때만 준다 */
   labelRotate?: number
+  /**
+   * 카테고리 라벨을 축에서 숨긴다. 이름이 길어 축약도 회전도 답이 아닐 때 쓴다 —
+   * 값은 호버 툴팁이 온전한 이름과 함께 보여준다.
+   */
+  hideCategoryLabels?: boolean
+  /** 값 눈금을 정수로 고정(호출 횟수처럼 소수가 의미 없는 값). */
+  integerValues?: boolean
 }
 
 /** 카테고리별 세로 막대. 시리즈가 여럿이면 나란히(grouped) 놓고 범례를 띄운다. */
-export function BarChart({ data, colors, height, theme = 'light', unit, labelRotate = 0 }: Props) {
+export function BarChart({
+  data,
+  colors,
+  height,
+  theme = 'light',
+  unit,
+  labelRotate = 0,
+  hideCategoryLabels = false,
+  integerValues = false,
+}: Props) {
   const option = useMemo<EChartsOption>(() => {
     const multi = data.series.length > 1
 
@@ -32,8 +48,11 @@ export function BarChart({ data, colors, height, theme = 'light', unit, labelRot
         valueFormatter: unit ? (v) => `${v}${unit}` : undefined,
       },
       legend: legendOption(theme, multi),
-      xAxis: { ...categoryAxisOption(theme, labelRotate), data: data.categories },
-      yAxis: valueAxisOption(theme, unit),
+      xAxis: {
+        ...categoryAxisOption(theme, labelRotate, !hideCategoryLabels),
+        data: data.categories,
+      },
+      yAxis: valueAxisOption(theme, { unit, integer: integerValues }),
       series: data.series.map((s) => ({
         type: 'bar' as const,
         name: s.name,
@@ -44,7 +63,7 @@ export function BarChart({ data, colors, height, theme = 'light', unit, labelRot
         itemStyle: { borderRadius: [4, 4, 0, 0] },
       })),
     }
-  }, [data, colors, theme, unit, labelRotate])
+  }, [data, colors, theme, unit, labelRotate, hideCategoryLabels, integerValues])
 
   return <EChart option={option} height={height} />
 }

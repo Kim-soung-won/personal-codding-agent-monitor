@@ -101,7 +101,7 @@ const EMPTY_OVERVIEW: OverviewStats = {
     estimatedCostUsd: 0,
   },
   kinds: [],
-  topResources: [],
+  resources: [],
   dailyTokens: [],
   dailyKinds: [],
   projectKinds: [],
@@ -110,7 +110,7 @@ const EMPTY_OVERVIEW: OverviewStats = {
 const overviewSchema = z.object({
   summary: z.record(z.string(), z.unknown()),
   kinds: z.array(z.unknown()),
-  topResources: z.array(z.unknown()),
+  resources: z.array(z.unknown()),
   dailyTokens: z.array(z.unknown()),
   dailyKinds: z.array(z.unknown()),
   projectKinds: z.array(z.unknown()),
@@ -125,6 +125,7 @@ export async function getOverview(f: OverviewFilter = {}): Promise<OverviewStats
         to: f.to,
         projectId: f.projectId ?? undefined,
         userId: f.userId ?? undefined,
+        kinds: f.kinds?.length ? f.kinds.join(',') : undefined,
       },
     })
     return unwrap(res, overviewSchema, EMPTY_OVERVIEW) as unknown as OverviewStats

@@ -6,14 +6,16 @@ import type { BarChartView, CategoryDoughnutChartView, DateLineChartView } from 
 import { useTheme } from '@/shared/lib/useTheme'
 import { cn } from '@/shared/lib/utils'
 import { TOKEN_SERIES, compactTokens } from '@/shared/lib/tokenSeries'
+import { enumerateDays, toDayKey } from '@/shared/lib/dateRange'
 import {
   INVOCATION_KIND_ORDER,
   INVOCATION_KIND_STYLE,
+  UNCLASSIFIED,
   kindKey,
   type InvocationKindKey,
 } from '@/shared/lib/invocationKind'
 import { ChartCard } from '@/shared/ui/ChartCard'
-import { commitRecordQueries } from '@/entities/commit-record'
+import { commitRecordQueries, type DailyTokenRow } from '@/entities/commit-record'
 
 /**
  * 조회 기간 프리셋. 0 은 제한 없음(전체).
@@ -25,17 +27,33 @@ const RANGE_OPTIONS = [
   { days: 0, label: '전체' },
 ]
 
-/** YYYY-MM-DD(로컬). 서버의 from/to 는 날짜 단위로 받는다. */
-function toDateInput(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
+/**
+ * 종류 범위 프리셋.
+ *
+ * 내장 도구(Bash·Edit·Read…)와 미분류가 호출 수의 대부분이라 그대로 집계하면
+ * Top 리소스도 추이도 그 둘로 덮인다. 기본은 위임 축(에이전트·스킬·MCP)만 본다.
+ */
+const SCOPE_OPTIONS = [
+  { key: 'managed' as const, label: '에이전트·스킬·MCP', kinds: ['AGENT', 'SKILL', 'MCP'] as const },
+  { key: 'all' as const, label: '내장 도구·미분류 포함', kinds: [] as const },
+]
 
+/** 종류별 순위표 패널. 순서는 위임 축을 먼저 본다는 뜻이다. */
+const RANK_PANELS = [
+  { kind: 'AGENT' as const, title: '에이전트별 호출' },
+  { kind: 'SKILL' as const, title: 'Skill 별 호출' },
+  { kind: 'MCP' as const, title: 'MCP 별 호출' },
+  { kind: 'TOOL' as const, title: '내장 도구별 호출' },
+  { kind: UNCLASSIFIED, title: '미분류 호출' },
+]
+
+/** 서버의 from/to 는 날짜 단위(YYYY-MM-DD)로 받는다. */
 function rangeParams(days: number): { from?: string; to?: string } {
   if (days <= 0) return {}
   const to = new Date()
   const from = new Date()
   from.setDate(from.getDate() - (days - 1))
-  return { from: toDateInput(from), to: toDateInput(to) }
+  return { from: toDayKey(from), to: toDayKey(to) }
 }
 
 function formatCost(usd: number): string {
@@ -73,8 +91,12 @@ export function GlobalAnalytics() {
   const { dark } = useTheme()
   const chartTheme = dark ? 'dark' : 'light'
   const [rangeDays, setRangeDays] = useState(7)
+  const [scope, setScope] = useState<'managed' | 'all'>('managed')
 
-  const filter = useMemo(() => rangeParams(rangeDays), [rangeDays])
+  const filter = useMemo(() => {
+    const kinds = SCOPE_OPTIONS.find((o) => o.key === scope)?.kinds ?? []
+    return { ...rangeParams(rangeDays), kinds: [...kinds] }
+  }, [rangeDays, scope])
   const { data, isPending } = useQuery(commitRecordQueries.overview(filter))
 
   const kindColor = (key: InvocationKindKey) =>
@@ -83,7 +105,7 @@ export function GlobalAnalytics() {
   const derived = useMemo(() => {
     const summary = data?.summary
     const kinds = data?.kinds ?? []
-    const topResources = data?.topResources ?? []
+    const resources = data?.resources ?? []
     const dailyTokens = data?.dailyTokens ?? []
     const dailyKinds = data?.dailyKinds ?? []
     const projectKinds = data?.projectKinds ?? []
@@ -93,13 +115,24 @@ export function GlobalAnalytics() {
     const kindCount = new Map<InvocationKindKey, number>()
     for (const row of kinds) kindCount.set(kindKey(row.kind), row.count)
 
-    const days = [...new Set(dailyKinds.map((r) => String(r.day).slice(0, 10)))].sort()
     const kindByDay = new Map<string, number>()
     for (const row of dailyKinds) {
       kindByDay.set(`${String(row.day).slice(0, 10)}|${kindKey(row.kind)}`, row.count)
     }
+    const tokenByDay = new Map<string, DailyTokenRow>()
+    for (const row of dailyTokens) tokenByDay.set(String(row.day).slice(0, 10), row)
 
-    const tokenDays = dailyTokens.map((r) => String(r.day).slice(0, 10))
+    // 날짜 축은 기록이 있는 날이 아니라 조회 구간 전체다. 기간 프리셋이 있으면 그 구간을,
+    // '전체'면 데이터가 걸친 최초~최종일을 쓰고 그 사이 빈 날은 0으로 그린다.
+    const seenDays = [
+      ...new Set([...tokenByDay.keys(), ...[...kindByDay.keys()].map((k) => k.split('|')[0])]),
+    ].sort()
+    const days =
+      filter.from && filter.to
+        ? enumerateDays(filter.from, filter.to)
+        : seenDays.length > 0
+          ? enumerateDays(seenDays[0], seenDays[seenDays.length - 1])
+          : []
 
     // 프로젝트별 — 총 호출 상위 8개만. 나머지는 막대가 뭉개져 읽히지 않는다.
     const projectTotals = new Map<string, number>()
@@ -117,39 +150,56 @@ export function GlobalAnalytics() {
       ? summary.inputTokens + summary.outputTokens + summary.cacheReadTokens + summary.cacheCreationTokens
       : 0
 
+    // 종류별 상위 10개. 종류를 섞어 자르면 호출이 잦은 한 종류가 목록을 독식한다.
+    const resourcesByKind = new Map<InvocationKindKey, Array<{ label: string; count: number }>>()
+    for (const row of resources) {
+      const key = kindKey(row.kind)
+      const list = resourcesByKind.get(key) ?? []
+      list.push({ label: resourceLabel(row), count: row.count })
+      resourcesByKind.set(key, list)
+    }
+    for (const [key, list] of resourcesByKind) {
+      resourcesByKind.set(key, list.sort((a, b) => b.count - a.count).slice(0, 10))
+    }
+
     return {
       summary,
-      topResources,
+      resourcesByKind,
       dailyTokens,
       kindCount,
       days,
       kindByDay,
-      tokenDays,
+      tokenByDay,
       topProjects,
       projectByKind,
       totalTokens,
       totalInvocations: summary?.invocations ?? 0,
     }
-  }, [data])
+  }, [data, filter])
 
   // ── 차트 데이터 ────────────────────────────────────────────────────────────
 
+  // 화면에 세울 종류 — 서버가 내려준 분포는 항상 전체라 여기서 범위를 적용한다.
+  const visibleKinds = INVOCATION_KIND_ORDER.filter(
+    (k) => scope === 'all' || (k !== 'TOOL' && k !== UNCLASSIFIED),
+  )
+  const excludedKinds = INVOCATION_KIND_ORDER.filter((k) => !visibleKinds.includes(k)).filter(
+    (k) => (derived.kindCount.get(k) ?? 0) > 0,
+  )
+
   // 0건인 종류는 빼되 색은 종류에 붙여 뽑는다 — 걸러진 뒤 색을 순서대로 매기면 밀린다.
-  const kindSlices = INVOCATION_KIND_ORDER.map((key) => ({
-    key,
-    name: INVOCATION_KIND_STYLE[key].label,
-    value: derived.kindCount.get(key) ?? 0,
-  })).filter((s) => s.value > 0)
+  const kindSlices = visibleKinds
+    .map((key) => ({
+      key,
+      name: INVOCATION_KIND_STYLE[key].label,
+      value: derived.kindCount.get(key) ?? 0,
+    }))
+    .filter((s) => s.value > 0)
 
   const doughnutData: CategoryDoughnutChartView = kindSlices.map(({ name, value }) => ({ name, value }))
   const doughnutColors = kindSlices.map((s) => kindColor(s.key))
 
-  const topBarData: BarChartView = {
-    categories: derived.topResources.map(resourceLabel),
-    series: [{ name: '호출 횟수', data: derived.topResources.map((r) => r.count) }],
-  }
-
-  const activeDayKinds = INVOCATION_KIND_ORDER.map((key) => ({
+  const activeDayKinds = visibleKinds.map((key) => ({
     key,
     name: INVOCATION_KIND_STYLE[key].label,
     dataPoints: derived.days.map((d) => ({
@@ -164,19 +214,7 @@ export function GlobalAnalytics() {
   }
   const callLineColors = activeDayKinds.map((s) => kindColor(s.key))
 
-  const tokenLineData: DateLineChartView = {
-    timestamps: derived.tokenDays,
-    series: TOKEN_SERIES.map((s) => ({
-      name: s.label,
-      dataPoints: derived.dailyTokens.map((r) => ({
-        timestamp: String(r.day).slice(0, 10),
-        requests: r[s.key],
-      })),
-    })),
-  }
-  const tokenLineColors = TOKEN_SERIES.map((s) => (dark ? s.dark : s.light))
-
-  const activeProjectKinds = INVOCATION_KIND_ORDER.map((key) => ({
+  const activeProjectKinds = visibleKinds.map((key) => ({
     key,
     name: INVOCATION_KIND_STYLE[key].label,
     data: derived.topProjects.map((p) => derived.projectByKind.get(`${p}|${key}`) ?? 0),
@@ -193,22 +231,41 @@ export function GlobalAnalytics() {
 
   return (
     <div className="space-y-6">
-      {/* 조회 기간 — 아래 카드·차트 전부가 이 구간을 본다 */}
-      <div className="flex items-center gap-1.5">
-        {RANGE_OPTIONS.map((opt) => (
-          <button
-            key={opt.days}
-            onClick={() => setRangeDays(opt.days)}
-            className={cn(
-              'text-xs px-2.5 py-1 rounded-md border transition-colors',
-              rangeDays === opt.days
-                ? 'border-primary text-primary bg-primary/10'
-                : 'border-border text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {opt.label}
-          </button>
-        ))}
+      {/* 필터 한 줄 — 조회 기간과 종류 범위. 아래 카드·차트 전부가 이 조건을 본다 */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          {RANGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.days}
+              onClick={() => setRangeDays(opt.days)}
+              className={cn(
+                'text-xs px-2.5 py-1 rounded-md border transition-colors',
+                rangeDays === opt.days
+                  ? 'border-primary text-primary bg-primary/10'
+                  : 'border-border text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          {SCOPE_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => setScope(opt.key)}
+              className={cn(
+                'text-xs px-2.5 py-1 rounded-md border transition-colors',
+                scope === opt.key
+                  ? 'border-primary text-primary bg-primary/10'
+                  : 'border-border text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -220,9 +277,16 @@ export function GlobalAnalytics() {
         <StatCard
           label="총 호출"
           value={derived.totalInvocations.toLocaleString()}
-          sub={INVOCATION_KIND_ORDER.filter((k) => (derived.kindCount.get(k) ?? 0) > 0)
-            .map((k) => `${INVOCATION_KIND_STYLE[k].label} ${derived.kindCount.get(k)}`)
-            .join(' · ')}
+          sub={[
+            kindSlices.map((s) => `${s.name} ${s.value}`).join(' · ') || '집계 없음',
+            excludedKinds.length > 0
+              ? `제외 ${excludedKinds
+                  .map((k) => `${INVOCATION_KIND_STYLE[k].label} ${derived.kindCount.get(k)}`)
+                  .join(' · ')}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' / ')}
         />
         <StatCard
           label="토큰 합계"
@@ -252,46 +316,88 @@ export function GlobalAnalytics() {
 
       {!isEmpty && !isPending && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <ChartCard title="종류별 분포">
-              <DoughnutChart
-                data={doughnutData}
-                height="260px"
-                colors={doughnutColors}
-                theme={chartTheme}
-              />
-            </ChartCard>
+          <ChartCard title="종류별 분포">
+            <DoughnutChart
+              data={doughnutData}
+              height="260px"
+              colors={doughnutColors}
+              theme={chartTheme}
+            />
+          </ChartCard>
 
-            <ChartCard title="Top 10 리소스">
-              <BarChart
-                data={topBarData}
-                height="260px"
-                colors={['#2a78d6']}
-                theme={chartTheme}
-                unit="회"
-                labelRotate={30}
-              />
-            </ChartCard>
+          {/*
+            종류별 순위를 따로 세운다. 하나로 합치면 호출이 잦은 종류가 목록을
+            독식해 스킬·MCP 는 아예 보이지 않는다. 막대 색은 그 종류의 색이라
+            어느 순위표를 보고 있는지 제목을 읽지 않아도 안다.
+          */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {RANK_PANELS.filter((p) => visibleKinds.includes(p.kind)).map((panel) => {
+              const rows = derived.resourcesByKind.get(panel.kind) ?? []
+              return (
+                <ChartCard
+                  key={panel.kind}
+                  title={panel.title}
+                  actions={
+                    <ChartNote>{rows.length > 0 ? `상위 ${rows.length}개 · 이름은 호버` : '호출 없음'}</ChartNote>
+                  }
+                >
+                  {rows.length > 0 ? (
+                    <BarChart
+                      data={{
+                        categories: rows.map((r) => r.label),
+                        series: [{ name: '호출 횟수', data: rows.map((r) => r.count) }],
+                      }}
+                      height="260px"
+                      colors={[kindColor(panel.kind)]}
+                      theme={chartTheme}
+                      unit="회"
+                      integerValues
+                      hideCategoryLabels
+                    />
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-16">
+                      이 기간에 호출 없음
+                    </p>
+                  )}
+                </ChartCard>
+              )
+            })}
           </div>
 
+          {/*
+            토큰 4종은 자릿수가 다르다(캐시 읽기 100M 대 입력 100K 대). 한 축에 겹치면
+            캐시 읽기 한 줄만 보이고 나머지는 바닥에 눌린다. 축을 두 개로 나누는 건
+            눈금 두 개를 겹쳐 읽게 만드는 속임수라, 축은 하나로 두고 패널을 나눈다
+            (small multiples) — 날짜 축은 공유하고 값 축만 각자 스케일을 갖는다.
+          */}
           <ChartCard
             title="토큰 사용량 추이"
-            actions={
-              <ChartNote>
-                {`합계 ${compactTokens(derived.totalTokens)} · ${TOKEN_SERIES.map(
-                  (s) => `${s.label} ${compactTokens(tokenTotal(derived.dailyTokens, s.key))}`,
-                ).join(' · ')}`}
-              </ChartNote>
-            }
+            actions={<ChartNote>{`합계 ${compactTokens(derived.totalTokens)} · 패널마다 값 축 스케일이 다르다`}</ChartNote>}
           >
-            <DateLineChart
-              data={tokenLineData}
-              height="260px"
-              colors={tokenLineColors}
-              theme={chartTheme}
-              valueFormat={compactTokens}
-              labelRotate={derived.tokenDays.length > 10 ? 45 : 0}
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+              {TOKEN_SERIES.map((s) => (
+                <div key={s.key}>
+                  <div className="flex items-baseline gap-2 px-1">
+                    <span
+                      className="inline-block w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: dark ? s.dark : s.light }}
+                    />
+                    <span className="text-xs">{s.label}</span>
+                    <span className="text-[11px] text-muted-foreground tabular-nums ml-auto">
+                      {compactTokens(tokenTotal(derived.dailyTokens, s.key))}
+                    </span>
+                  </div>
+                  <DateLineChart
+                    data={tokenPanelData(derived.days, derived.tokenByDay, s.key, s.label)}
+                    height="150px"
+                    colors={[dark ? s.dark : s.light]}
+                    theme={chartTheme}
+                    valueFormat={compactTokens}
+                    labelRotate={derived.days.length > 10 ? 45 : 0}
+                  />
+                </div>
+              ))}
+            </div>
           </ChartCard>
 
           {derived.days.length > 1 && (
@@ -315,6 +421,7 @@ export function GlobalAnalytics() {
                 colors={projectBarColors}
                 theme={chartTheme}
                 unit="회"
+                integerValues
               />
             </ChartCard>
           )}
@@ -322,6 +429,24 @@ export function GlobalAnalytics() {
       )}
     </div>
   )
+}
+
+/** small multiple 한 칸의 데이터. 날짜 축은 전 패널이 공유하고 값만 종류별로 뽑는다. */
+function tokenPanelData(
+  days: string[],
+  byDay: Map<string, DailyTokenRow>,
+  key: (typeof TOKEN_SERIES)[number]['key'],
+  label: string,
+): DateLineChartView {
+  return {
+    timestamps: days,
+    series: [
+      {
+        name: label,
+        dataPoints: days.map((d) => ({ timestamp: d, requests: byDay.get(d)?.[key] ?? 0 })),
+      },
+    ],
+  }
 }
 
 /** 토큰 종류별 기간 합계. 카드 부제와 차트가 같은 수를 보게 한 곳에서 더한다. */

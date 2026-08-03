@@ -53,7 +53,9 @@ export function tooltipOption(theme: ChartTheme) {
     borderWidth: 1,
     padding: [6, 10] as [number, number],
     textStyle: { color: t.ink, fontSize: 12 },
-    extraCssText: 'box-shadow: 0 4px 12px rgba(0,0,0,0.12); border-radius: 8px;',
+    // 긴 이름(plugin:resource)이 한 줄로 뻗어 화면 밖으로 나가지 않게 접는다.
+    extraCssText:
+      'box-shadow: 0 4px 12px rgba(0,0,0,0.12); border-radius: 8px; max-width: 320px; white-space: normal; word-break: break-all;',
   }
 }
 
@@ -70,29 +72,38 @@ export function legendOption(theme: ChartTheme, show: boolean) {
   }
 }
 
-/** 카테고리 축(가로) 공통 설정. */
-export function categoryAxisOption(theme: ChartTheme, rotate = 0) {
+/**
+ * 카테고리 축(가로) 공통 설정.
+ * showLabels=false 면 축 라벨을 지운다 — 축약도 줄바꿈도 마땅치 않은 긴 이름은
+ * 축에 눕혀 놓느니 지우고 호버 툴팁으로 온전히 보여주는 편이 읽힌다.
+ */
+export function categoryAxisOption(theme: ChartTheme, rotate = 0, showLabels = true) {
   const t = chartTokens(theme)
   return {
     type: 'category' as const,
     axisLine: { lineStyle: { color: t.axisLine } },
     axisTick: { show: false },
-    axisLabel: { color: t.ink, fontSize: 11, rotate, hideOverlap: true },
+    axisLabel: { show: showLabels, color: t.ink, fontSize: 11, rotate, hideOverlap: true },
   }
+}
+
+interface ValueAxisOpts {
+  unit?: string
+  /** 값 표기 함수. 주면 unit 대신 이쪽을 쓴다(토큰처럼 자릿수가 큰 값). */
+  format?: (v: number) => string
+  /** 눈금을 정수로 고정. 호출 횟수처럼 소수가 의미 없는 값에 준다. */
+  integer?: boolean
 }
 
 /**
  * 값 축(세로) 공통 설정. 축선은 지우고 옅은 격자만 남긴다.
- * format 을 주면 단위 대신 그 함수로 라벨을 만든다(토큰처럼 자릿수가 큰 값).
  */
-export function valueAxisOption(
-  theme: ChartTheme,
-  unit?: string,
-  format?: (v: number) => string,
-) {
+export function valueAxisOption(theme: ChartTheme, { unit, format, integer }: ValueAxisOpts = {}) {
   const t = chartTokens(theme)
   return {
     type: 'value' as const,
+    // 최댓값이 2 인데 눈금이 0.2 단위로 잘리면 "0.8회" 같은 없는 값이 축에 뜬다.
+    ...(integer ? { minInterval: 1 } : {}),
     axisLine: { show: false },
     axisTick: { show: false },
     splitLine: { lineStyle: { color: t.splitLine } },

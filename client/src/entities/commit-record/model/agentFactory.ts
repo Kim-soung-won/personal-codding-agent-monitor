@@ -244,6 +244,11 @@ export interface OverviewFilter {
   to?: string
   projectId?: number | null
   userId?: number | null
+  /**
+   * 집계에 포함할 호출 종류. 'UNCLASSIFIED' 는 kind IS NULL 을 뜻한다.
+   * 비우면 전부 — 내장 도구·미분류가 호출 수의 대부분이라 기본은 좁혀 쓴다.
+   */
+  kinds?: Array<InvocationKind | 'UNCLASSIFIED'>
 }
 
 /**
@@ -261,9 +266,19 @@ export interface OverviewStats {
     cacheCreationTokens: number
     estimatedCostUsd: number
   }
-  /** kind 가 null 인 행은 파서가 종류를 못 정한 호출이다. */
+  /**
+   * 종류 분포. **kinds 필터와 무관하게 항상 전체**다 — 무엇을 걷어냈는지
+   * 화면이 말하려면 제외된 종류의 건수도 있어야 한다.
+   * kind 가 null 인 행은 파서가 종류를 못 정한 호출이다.
+   */
   kinds: Array<{ kind: InvocationKind | null; count: number }>
-  topResources: Array<{ plugin: string | null; resource: string; count: number }>
+  /** 종류·플러그인·리소스별 호출 수. 상위 N 절단은 화면이 종류별로 한다. */
+  resources: Array<{
+    kind: InvocationKind | null
+    plugin: string | null
+    resource: string
+    count: number
+  }>
   dailyTokens: DailyTokenRow[]
   dailyKinds: Array<{ day: string; kind: InvocationKind | null; count: number }>
   projectKinds: Array<{ project: string; kind: InvocationKind | null; count: number }>

@@ -422,12 +422,46 @@ export function createAgentFactoryRouter(prisma: PrismaClient): Router {
         ' AND ',
       )
 
+      // kinds=AGENT,SKILL,MCP 처럼 종류를 좁힌다. UNCLASSIFIED 는 kind IS NULL 을 뜻한다.
+      // 내장 도구(TOOL)와 미분류가 호출 수의 대부분이라, 이들을 걷어내야 위임 축이 보인다.
+      // 미지정이면 전부 — 기존 호출부가 그대로 동작한다.
+      const requestedKinds = String(req.query.kinds ?? '')
+        .split(',')
+        .map((k) => k.trim().toUpperCase())
+        .filter(Boolean)
+      const enumKinds = requestedKinds.filter((k) =>
+        ['AGENT', 'SKILL', 'MCP', 'TOOL'].includes(k),
+      ) as ResourceKind[]
+      const wantsUnclassified = requestedKinds.includes('UNCLASSIFIED')
+      // 알아볼 수 없는 값만 들어온 경우는 필터 없음으로 본다(빈 화면보다 전체가 낫다).
+      const kindFiltered = enumKinds.length > 0 || wantsUnclassified
+
       const invocationWhere: Prisma.ToolInvocationWhereInput = {
         rowType: 'ITEM',
         record: recordWhere,
+        ...(kindFiltered
+          ? {
+              OR: [
+                ...(enumKinds.length > 0 ? [{ kind: { in: enumKinds } }] : []),
+                ...(wantsUnclassified ? [{ kind: null }] : []),
+              ],
+            }
+          : {}),
       }
 
-      const [totals, commits, sessions, invocations, kinds, topResources, dailyTokens, dailyKinds, projectKinds] =
+      const kindSql = kindFiltered
+        ? Prisma.sql`AND (${Prisma.join(
+            [
+              ...(enumKinds.length > 0
+                ? [Prisma.sql`i.kind = ANY(${enumKinds}::text[]::"ResourceKind"[])`]
+                : []),
+              ...(wantsUnclassified ? [Prisma.sql`i.kind IS NULL`] : []),
+            ],
+            ' OR ',
+          )})`
+        : Prisma.empty
+
+      const [totals, commits, sessions, invocations, kinds, resources, dailyTokens, dailyKinds, projectKinds] =
         await Promise.all([
           prisma.commitRecord.aggregate({
             where: recordWhere,
@@ -446,17 +480,22 @@ export function createAgentFactoryRouter(prisma: PrismaClient): Router {
             select: { sessionId: true },
           }),
           prisma.toolInvocation.count({ where: invocationWhere }),
+          // 종류 분포는 **필터를 걸지 않는다** — 무엇을 걷어냈는지 화면이 정직하게
+          // 말하려면 제외된 종류의 건수도 알아야 한다.
           prisma.toolInvocation.groupBy({
             by: ['kind'],
-            where: invocationWhere,
+            where: { rowType: 'ITEM', record: recordWhere },
             _count: { _all: true },
           }),
+          // 종류까지 묶어서 낸다 — 화면이 에이전트·스킬·MCP 를 각각 순위로 세우므로
+          // 전체 Top N 을 잘라 보내면 한 종류가 목록을 독식해 나머지가 비어 버린다.
+          // 상위 N 절단은 종류별로 화면에서 한다.
           prisma.toolInvocation.groupBy({
-            by: ['plugin', 'resource'],
+            by: ['kind', 'plugin', 'resource'],
             where: invocationWhere,
             _count: { _all: true },
             orderBy: { _count: { resource: 'desc' } },
-            take: 10,
+            take: 300,
           }),
           prisma.$queryRaw<
             Array<{
@@ -486,7 +525,7 @@ export function createAgentFactoryRouter(prisma: PrismaClient): Router {
                    COUNT(*)                          AS count
             FROM "ToolInvocation" i
             JOIN "CommitRecord" r ON r.id = i."recordId"
-            WHERE i."rowType" = 'ITEM' AND ${sqlFilter}
+            WHERE i."rowType" = 'ITEM' AND ${sqlFilter} ${kindSql}
             GROUP BY 1, 2
             ORDER BY 1 ASC
           `,
@@ -497,7 +536,7 @@ export function createAgentFactoryRouter(prisma: PrismaClient): Router {
             FROM "ToolInvocation" i
             JOIN "CommitRecord" r ON r.id = i."recordId"
             JOIN "Project" p      ON p.id = r."projectId"
-            WHERE i."rowType" = 'ITEM' AND ${sqlFilter}
+            WHERE i."rowType" = 'ITEM' AND ${sqlFilter} ${kindSql}
             GROUP BY 1, 2
           `,
         ])
@@ -517,7 +556,8 @@ export function createAgentFactoryRouter(prisma: PrismaClient): Router {
             estimatedCostUsd: sum.estimatedCostUsd ? Number(sum.estimatedCostUsd) : 0,
           },
           kinds: kinds.map((k) => ({ kind: k.kind, count: k._count._all })),
-          topResources: topResources.map((r) => ({
+          resources: resources.map((r) => ({
+            kind: r.kind,
             plugin: r.plugin,
             resource: r.resource,
             count: r._count._all,
