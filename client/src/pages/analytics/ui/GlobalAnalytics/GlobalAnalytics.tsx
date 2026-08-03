@@ -1,13 +1,22 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { BarChart, DatelineChart, DoughnutChart } from '@we/ai-template'
-import type { BarChartView, CategoryDoughnutChartView, DateLineChartView } from '@we/ai-template'
+import { BarChart, DateLineChart, DoughnutChart } from '@/shared/ui/charts'
+import type { BarChartView, CategoryDoughnutChartView, DateLineChartView } from '@/shared/ui/charts'
 import { useTheme } from '@/shared/lib/useTheme'
 import { extractInvocations, groupByPlugin } from '@shared/resource-extract'
 import { sessionQueries } from '@/entities/session'
 import { KIND_HEX as KIND_COLORS } from '@/shared/lib/resourceKind'
 import { calcCostUsd, collectUsage } from '@shared/pricing'
 import type { SessionInfo } from '@/entities/session'
+
+/** 종류별 시리즈 정의. 이름·색이 여기 한 곳에서 나오므로 차트끼리 색이 어긋나지 않는다. */
+const KIND_SERIES_DEFS = [
+  { name: 'Skill',    kind: 'skill'    as const, color: KIND_COLORS.skill },
+  { name: 'Agent',    kind: 'agent'    as const, color: KIND_COLORS.agent },
+  { name: 'Workflow', kind: 'workflow' as const, color: KIND_COLORS.workflow },
+  { name: 'Artifact', kind: 'artifact' as const, color: KIND_COLORS.artifact },
+  { name: 'MCP',      kind: 'mcp'      as const, color: KIND_COLORS.mcp },
+]
 
 function projectLabel(path: string): string {
   const parts = path.split('/').filter(Boolean)
@@ -131,7 +140,11 @@ export function GlobalAnalytics({ sessions }: Props) {
     return {
       skillCount, agentCount, workflowCount, artifactCount, mcpCount, totalCalls, costUsd,
       observedModels,
-      top10, allDays, skillByDay, agentByDay, workflowByDay, artifactByDay, mcpByDay,
+      top10, allDays,
+      byDay: {
+        skill: skillByDay, agent: agentByDay, workflow: workflowByDay,
+        artifact: artifactByDay, mcp: mcpByDay,
+      },
       projectEntries, topResource: sorted[0]?.[0] ?? '—',
       topPluginGroups,
     }
@@ -139,13 +152,16 @@ export function GlobalAnalytics({ sessions }: Props) {
 
   // ── Chart data shapes ──────────────────────────────────────────────────────
 
-  const doughnutData: CategoryDoughnutChartView = [
-    { name: 'Skill',    value: derived.skillCount },
-    { name: 'Agent',    value: derived.agentCount },
-    { name: 'Workflow', value: derived.workflowCount },
-    { name: 'Artifact', value: derived.artifactCount },
-    { name: 'MCP',      value: derived.mcpCount },
-  ].filter(d => d.value > 0)
+  // 도넛 — 0건인 종류는 뺀다. 색은 종류에 붙어 있으므로 남은 조각과 함께 뽑아야
+  // 한 종류가 빠졌을 때 나머지 색이 한 칸씩 밀리지 않는다.
+  const doughnutSlices = KIND_SERIES_DEFS
+    .map(def => ({ ...def, value: derived[`${def.kind}Count`] }))
+    .filter(d => d.value > 0)
+
+  const doughnutData: CategoryDoughnutChartView = doughnutSlices.map(
+    ({ name, value }) => ({ name, value }),
+  )
+  const doughnutColors = doughnutSlices.map(d => d.color)
 
   const topBarData: BarChartView = {
     categories: derived.top10.map(([name]) => name),
@@ -154,47 +170,38 @@ export function GlobalAnalytics({ sessions }: Props) {
     ],
   }
 
+  const activeDaySeries = KIND_SERIES_DEFS
+    .map(def => ({
+      ...def,
+      dataPoints: derived.allDays.map(d => ({
+        timestamp: d,
+        requests: derived.byDay[def.kind].get(d) ?? 0,
+      })),
+    }))
+    .filter(s => s.dataPoints.some(p => p.requests > 0))
   const datelineData: DateLineChartView = {
     timestamps: derived.allDays,
-    series: [
-      { name: 'Skill',    dataPoints: derived.allDays.map(d => ({ timestamp: d, requests: derived.skillByDay.get(d) ?? 0 })) },
-      { name: 'Agent',    dataPoints: derived.allDays.map(d => ({ timestamp: d, requests: derived.agentByDay.get(d) ?? 0 })) },
-      { name: 'Workflow', dataPoints: derived.allDays.map(d => ({ timestamp: d, requests: derived.workflowByDay.get(d) ?? 0 })) },
-      { name: 'Artifact', dataPoints: derived.allDays.map(d => ({ timestamp: d, requests: derived.artifactByDay.get(d) ?? 0 })) },
-      { name: 'MCP',      dataPoints: derived.allDays.map(d => ({ timestamp: d, requests: derived.mcpByDay.get(d) ?? 0 })) },
-    ].filter(s => s.dataPoints.some(p => p.requests > 0)),
+    series: activeDaySeries.map(({ name, dataPoints }) => ({ name, dataPoints })),
   }
+  const datelineColors = activeDaySeries.map(s => s.color)
 
-  const PLUGIN_SERIES_DEFS = [
-    { name: 'Skill',    kind: 'skill'    as const, color: KIND_COLORS.skill },
-    { name: 'Agent',    kind: 'agent'    as const, color: KIND_COLORS.agent },
-    { name: 'Workflow', kind: 'workflow' as const, color: KIND_COLORS.workflow },
-    { name: 'Artifact', kind: 'artifact' as const, color: KIND_COLORS.artifact },
-    { name: 'MCP',      kind: 'mcp'      as const, color: KIND_COLORS.mcp },
-  ]
-
-  const rawPluginSeries = PLUGIN_SERIES_DEFS.map(def => ({
-    name: def.name,
-    color: def.color,
-    data: derived.topPluginGroups.map(g => g.kindCounts[def.kind]),
-  }))
-  const activePluginSeries = rawPluginSeries.filter(s => s.data.some(v => v > 0))
+  const activePluginSeries = KIND_SERIES_DEFS
+    .map(def => ({ ...def, data: derived.topPluginGroups.map(g => g.kindCounts[def.kind]) }))
+    .filter(s => s.data.some(v => v > 0))
   const pluginBarData: BarChartView = {
     categories: derived.topPluginGroups.map(g => g.plugin),
-    series: activePluginSeries.map(s => ({ name: s.name, data: s.data })),
+    series: activePluginSeries.map(({ name, data }) => ({ name, data })),
   }
   const pluginBarColors = activePluginSeries.map(s => s.color)
 
+  const activeProjectSeries = KIND_SERIES_DEFS
+    .map(def => ({ ...def, data: derived.projectEntries.map(p => p[def.kind]) }))
+    .filter(s => s.data.some(v => v > 0))
   const projectBarData: BarChartView = {
     categories: derived.projectEntries.map(p => p.name),
-    series: [
-      { name: 'Skill',    data: derived.projectEntries.map(p => p.skill) },
-      { name: 'Agent',    data: derived.projectEntries.map(p => p.agent) },
-      { name: 'Workflow', data: derived.projectEntries.map(p => p.workflow) },
-      { name: 'Artifact', data: derived.projectEntries.map(p => p.artifact) },
-      { name: 'MCP',      data: derived.projectEntries.map(p => p.mcp) },
-    ].filter(s => s.data.some(v => v > 0)),
+    series: activeProjectSeries.map(({ name, data }) => ({ name, data })),
   }
+  const projectBarColors = activeProjectSeries.map(s => s.color)
 
   const isEmpty = derived.totalCalls === 0 && !loading
 
@@ -256,9 +263,8 @@ export function GlobalAnalytics({ sessions }: Props) {
               <DoughnutChart
                 data={doughnutData}
                 height="260px"
-                colors={[KIND_COLORS.skill, KIND_COLORS.agent, KIND_COLORS.workflow, KIND_COLORS.artifact, KIND_COLORS.mcp]}
+                colors={doughnutColors}
                 theme={chartTheme}
-                legendPreset="bottom"
               />
             </div>
 
@@ -270,10 +276,7 @@ export function GlobalAnalytics({ sessions }: Props) {
                 colors={['#6366f1']}
                 theme={chartTheme}
                 unit="회"
-                customOption={{
-                  xAxis: { axisLabel: { rotate: 30 } },
-                  grid: { bottom: 60 },
-                }}
+                labelRotate={30}
               />
             </div>
           </div>
@@ -282,10 +285,10 @@ export function GlobalAnalytics({ sessions }: Props) {
           {derived.allDays.length > 1 && (
             <div className="rounded-xl border border-border bg-card p-4">
               <p className="text-sm font-medium mb-3">일별 호출 추이</p>
-              <DatelineChart
+              <DateLineChart
                 data={datelineData}
                 height="260px"
-                colors={[KIND_COLORS.skill, KIND_COLORS.agent, KIND_COLORS.workflow, KIND_COLORS.artifact, KIND_COLORS.mcp]}
+                colors={datelineColors}
                 theme={chartTheme}
                 unit="회"
                 labelRotate={derived.allDays.length > 10 ? 45 : 0}
@@ -300,7 +303,7 @@ export function GlobalAnalytics({ sessions }: Props) {
               <BarChart
                 data={projectBarData}
                 height="260px"
-                colors={[KIND_COLORS.skill, KIND_COLORS.agent, KIND_COLORS.workflow, KIND_COLORS.artifact, KIND_COLORS.mcp]}
+                colors={projectBarColors}
                 theme={chartTheme}
                 unit="회"
               />

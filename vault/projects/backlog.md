@@ -47,7 +47,7 @@ AppShell 에 `Soon` 으로 자리만 있는 4개 화면. 백엔드(`/api/stats/*
 - **P1-2. Sub-agents 대시보드** — `getSubagentUsage`(v_subagent_resource_usage).
   subagent_type별 호출 리소스 랭킹 + type 필터. ⚠️ 토큰/비용 카드는 서버에 sub_agents 집계
   엔드포인트가 없어 별도 논의(엔드포인트 추가 or 세션 이벤트 집계).
-- **P1-3. Projects 대시보드** — `getDailyTokens`(일별 추이 DatelineChart) + `getDbSessions`
+- **P1-3. Projects 대시보드** — `getDailyTokens`(일별 추이 DateLineChart) + `getDbSessions`
   세션 목록(title/description/비용/이벤트수). 행 클릭 → 세션 상세.
 - **P1-4. Compare** — 미사용 `SessionCompare` 부활, 데이터소스를 `getDbSessions`/
   `getDbSessionEvents` 로 전환.

@@ -8,7 +8,7 @@ interface Props {
   actions?: ReactNode
 }
 
-/** 차트(@we/ai-template)를 감싸는 카드 래퍼. */
+/** 차트를 감싸는 카드 래퍼. */
 export function ChartCard({ title, children, className, actions }: Props) {
   return (
     <div className={cn('rounded-xl border border-border bg-card p-4', className)}>
