@@ -16,9 +16,13 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// url 은 트랜잭션 모드 pooler(pgbouncer), directUrl 은 세션 모드 pooler.
+// pgbouncer 트랜잭션 모드는 prepared statement 를 못 쓰므로 마이그레이션·introspection 은
+// 반드시 directUrl 로 나가야 한다(migrate/db:diff 계열은 Prisma 가 알아서 이쪽을 쓴다).
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─── 차원(dimension) ────────────────────────────────────────────────────────

@@ -49,6 +49,17 @@ if (!process.env.DATABASE_URL) {
   process.exit(1)
 }
 
+// schema.prisma 의 datasource 가 DIRECT_URL 을 참조한다. 미설정이면 Prisma 가
+// 첫 쿼리에서야 알아보기 힘든 오류를 던지므로 부팅 시점에 끊는다.
+// pooler 를 쓰지 않는 환경이라면 DATABASE_URL 과 같은 값을 넣으면 된다.
+if (!process.env.DIRECT_URL) {
+  console.error(
+    '[server] DIRECT_URL 환경변수가 설정되지 않았습니다. ' +
+      '마이그레이션용 세션 모드(직결) 접속 문자열을 지정한 뒤 다시 실행하세요.',
+  )
+  process.exit(1)
+}
+
 const parser = new JsonlEventParser()
 
 const app = express()

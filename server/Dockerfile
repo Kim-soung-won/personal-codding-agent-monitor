@@ -30,5 +30,6 @@ COPY --from=build /app/server/node_modules/@prisma ./server/node_modules/@prisma
 COPY server/prisma ./server/prisma
 WORKDIR /app/server
 EXPOSE 3001
-# DATABASE_URL 은 필수. 스키마 적용은 컨테이너 기동이 아니라 배포 파이프라인에서 한다.
+# DATABASE_URL(런타임 pooler) 과 DIRECT_URL(마이그레이션 직결) 은 둘 다 필수.
+# 스키마 적용은 컨테이너 기동이 아니라 배포 파이프라인에서 한다.
 CMD ["node", "dist/server/src/index.js"]
