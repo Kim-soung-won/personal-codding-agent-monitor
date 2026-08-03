@@ -238,6 +238,37 @@ export interface DailyTokenRow {
   cacheCreation: number
 }
 
+/** 분석 대시보드 필터 — 커밋 capturedAt 기준. */
+export interface OverviewFilter {
+  from?: string
+  to?: string
+  projectId?: number | null
+  userId?: number | null
+}
+
+/**
+ * `/stats/overview` 응답. 한 화면이 같은 필터로 그리는 집계를 한 번에 담는다.
+ * 호출(ToolInvocation)에는 자체 시각이 없어 일별 축은 소속 커밋의 capturedAt 이다.
+ */
+export interface OverviewStats {
+  summary: {
+    commits: number
+    sessions: number
+    invocations: number
+    inputTokens: number
+    outputTokens: number
+    cacheReadTokens: number
+    cacheCreationTokens: number
+    estimatedCostUsd: number
+  }
+  /** kind 가 null 인 행은 파서가 종류를 못 정한 호출이다. */
+  kinds: Array<{ kind: InvocationKind | null; count: number }>
+  topResources: Array<{ plugin: string | null; resource: string; count: number }>
+  dailyTokens: DailyTokenRow[]
+  dailyKinds: Array<{ day: string; kind: InvocationKind | null; count: number }>
+  projectKinds: Array<{ project: string; kind: InvocationKind | null; count: number }>
+}
+
 export interface RecordFilter {
   projectId?: number | null
   userId?: number | null

@@ -14,6 +14,8 @@ interface Props {
   unit?: string
   /** 날짜 라벨 회전 각도. 날짜가 많을 때만 준다 */
   labelRotate?: number
+  /** 값 표기 함수(축·툴팁 공용). 주면 unit 대신 이쪽을 쓴다 — 토큰처럼 큰 수에 */
+  valueFormat?: (v: number) => string
 }
 
 /** 날짜 축 다중 라인. 십자선 툴팁으로 같은 날 전 시리즈를 한 번에 읽는다. */
@@ -24,6 +26,7 @@ export function DateLineChart({
   theme = 'light',
   unit,
   labelRotate = 0,
+  valueFormat,
 }: Props) {
   const option = useMemo<EChartsOption>(() => {
     const t = chartTokens(theme)
@@ -36,11 +39,15 @@ export function DateLineChart({
         trigger: 'axis',
         axisPointer: { type: 'line', lineStyle: { color: t.axisLine } },
         ...tooltipOption(theme),
-        valueFormatter: unit ? (v) => `${v}${unit}` : undefined,
+        valueFormatter: valueFormat
+          ? (v) => valueFormat(Number(v))
+          : unit
+            ? (v) => `${v}${unit}`
+            : undefined,
       },
       legend: legendOption(theme, multi),
       xAxis: { ...categoryAxisOption(theme, labelRotate), data: data.timestamps, boundaryGap: false },
-      yAxis: valueAxisOption(theme, unit),
+      yAxis: valueAxisOption(theme, unit, valueFormat),
       series: data.series.map((s) => ({
         type: 'line' as const,
         name: s.name,
@@ -58,7 +65,7 @@ export function DateLineChart({
         emphasis: { focus: 'series' as const },
       })),
     }
-  }, [data, colors, theme, unit, labelRotate])
+  }, [data, colors, theme, unit, labelRotate, valueFormat])
 
   return <EChart option={option} height={height} />
 }

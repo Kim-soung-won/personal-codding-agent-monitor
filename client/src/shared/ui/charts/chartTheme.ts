@@ -81,8 +81,15 @@ export function categoryAxisOption(theme: ChartTheme, rotate = 0) {
   }
 }
 
-/** 값 축(세로) 공통 설정. 축선은 지우고 옅은 격자만 남긴다. */
-export function valueAxisOption(theme: ChartTheme, unit?: string) {
+/**
+ * 값 축(세로) 공통 설정. 축선은 지우고 옅은 격자만 남긴다.
+ * format 을 주면 단위 대신 그 함수로 라벨을 만든다(토큰처럼 자릿수가 큰 값).
+ */
+export function valueAxisOption(
+  theme: ChartTheme,
+  unit?: string,
+  format?: (v: number) => string,
+) {
   const t = chartTokens(theme)
   return {
     type: 'value' as const,
@@ -92,7 +99,7 @@ export function valueAxisOption(theme: ChartTheme, unit?: string) {
     axisLabel: {
       color: t.ink,
       fontSize: 11,
-      formatter: unit ? `{value}${unit}` : '{value}',
+      formatter: format ? (v: number) => format(v) : unit ? `{value}${unit}` : '{value}',
     },
   }
 }

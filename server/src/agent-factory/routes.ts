@@ -1,5 +1,6 @@
 import { Router } from 'express'
-import type { PrismaClient, Prisma, ResourceKind } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+import type { PrismaClient, ResourceKind } from '@prisma/client'
 import { ingestRecord, type IncomingRecord, type IngestResult } from './record-service.js'
 
 /** 목록 페이지 크기 상한 — 훅이 실수로 큰 값을 보내도 DB 를 훑지 않게 막는다. */
@@ -11,6 +12,24 @@ const MAX_BATCH = 50
 function toInt(value: unknown, fallback: number): number {
   const n = Number(value)
   return Number.isFinite(n) ? n : fallback
+}
+
+/**
+ * from/to 쿼리를 capturedAt 범위로 파싱한다.
+ *
+ * to 는 날짜(YYYY-MM-DD)로 오므로 자정으로 파싱된다. 당일 기록까지 포함하려면
+ * 그날 끝(23:59:59.999)으로 밀어야 한다 — 안 그러면 당일 00:00:00 이후분이 전부 잘린다.
+ */
+function parseCapturedRange(query: Record<string, unknown>): { from: Date | null; to: Date | null } {
+  const parse = (v: unknown): Date | null => {
+    if (!v) return null
+    const d = new Date(String(v))
+    return Number.isNaN(d.getTime()) ? null : d
+  }
+  const from = parse(query.from)
+  const to = parse(query.to)
+  if (to) to.setHours(23, 59, 59, 999)
+  return { from, to }
 }
 
 export function createAgentFactoryRouter(prisma: PrismaClient): Router {
@@ -85,18 +104,9 @@ export function createAgentFactoryRouter(prisma: PrismaClient): Router {
       // 특정 에이전트가 쓰인 커밋만 보기
       if (req.query.agent) where.agents = { some: { agent: String(req.query.agent) } }
 
-      const from = req.query.from ? new Date(String(req.query.from)) : null
-      const to = req.query.to ? new Date(String(req.query.to)) : null
-      // to 는 날짜(YYYY-MM-DD)로 오므로 자정으로 파싱된다. 당일 기록까지 포함하려면
-      // 그날 끝(23:59:59.999)으로 밀어야 한다 — 안 그러면 당일 00:00:00 이후분이 전부 잘린다.
-      if (to && !Number.isNaN(to.getTime())) {
-        to.setHours(23, 59, 59, 999)
-      }
-      if ((from && !Number.isNaN(from.getTime())) || (to && !Number.isNaN(to.getTime()))) {
-        where.capturedAt = {
-          ...(from && !Number.isNaN(from.getTime()) ? { gte: from } : {}),
-          ...(to && !Number.isNaN(to.getTime()) ? { lte: to } : {}),
-        }
+      const { from, to } = parseCapturedRange(req.query)
+      if (from || to) {
+        where.capturedAt = { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) }
       }
 
       const [total, items] = await Promise.all([
@@ -371,6 +381,167 @@ export function createAgentFactoryRouter(prisma: PrismaClient): Router {
           cacheRead: Number(r.cache_read),
           cacheCreation: Number(r.cache_creation),
         })),
+      })
+    } catch (err) {
+      res.status(500).json({ success: false, error: String(err) })
+    }
+  })
+
+  /**
+   * 분석 대시보드 한 판을 한 번에 내려주는 집계.
+   *
+   * 화면 하나가 종류분포·Top리소스·일별호출·일별토큰·프로젝트별을 **같은 필터로**
+   * 동시에 그린다. 엔드포인트를 쪼개면 같은 조건을 5번 파싱하고 5번 왕복하며,
+   * 그 사이 필터가 바뀌면 화면 안에서 구간이 어긋난다. 그래서 한 응답으로 묶는다.
+   *
+   * 필터: from·to(capturedAt) · projectId · userId.
+   * 호출(ToolInvocation)에는 자체 시각이 없으므로 일별 축은 소속 커밋의 capturedAt 이다.
+   */
+  router.get('/stats/overview', async (req, res) => {
+    try {
+      const { from, to } = parseCapturedRange(req.query)
+      const projectId = req.query.projectId ? toInt(req.query.projectId, 0) : null
+      const userId = req.query.userId ? toInt(req.query.userId, 0) : null
+
+      const recordWhere: Prisma.CommitRecordWhereInput = {}
+      if (projectId) recordWhere.projectId = projectId
+      if (userId) recordWhere.userId = userId
+      if (from || to) {
+        recordWhere.capturedAt = { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) }
+      }
+
+      // raw 쿼리용 동일 조건. 커밋 테이블 별칭은 r 로 고정한다.
+      const sqlFilter = Prisma.join(
+        [
+          from ? Prisma.sql`r."capturedAt" >= ${from}` : null,
+          to ? Prisma.sql`r."capturedAt" <= ${to}` : null,
+          projectId ? Prisma.sql`r."projectId" = ${projectId}` : null,
+          userId ? Prisma.sql`r."userId" = ${userId}` : null,
+          Prisma.sql`TRUE`,
+        ].filter((f): f is Prisma.Sql => f !== null),
+        ' AND ',
+      )
+
+      const invocationWhere: Prisma.ToolInvocationWhereInput = {
+        rowType: 'ITEM',
+        record: recordWhere,
+      }
+
+      const [totals, commits, sessions, invocations, kinds, topResources, dailyTokens, dailyKinds, projectKinds] =
+        await Promise.all([
+          prisma.commitRecord.aggregate({
+            where: recordWhere,
+            _sum: {
+              inputTokens: true,
+              outputTokens: true,
+              cacheReadTokens: true,
+              cacheCreationTokens: true,
+              estimatedCostUsd: true,
+            },
+          }),
+          prisma.commitRecord.count({ where: recordWhere }),
+          prisma.commitRecord.findMany({
+            where: recordWhere,
+            distinct: ['sessionId'],
+            select: { sessionId: true },
+          }),
+          prisma.toolInvocation.count({ where: invocationWhere }),
+          prisma.toolInvocation.groupBy({
+            by: ['kind'],
+            where: invocationWhere,
+            _count: { _all: true },
+          }),
+          prisma.toolInvocation.groupBy({
+            by: ['plugin', 'resource'],
+            where: invocationWhere,
+            _count: { _all: true },
+            orderBy: { _count: { resource: 'desc' } },
+            take: 10,
+          }),
+          prisma.$queryRaw<
+            Array<{
+              day: Date
+              commits: bigint
+              input_tokens: bigint | null
+              output_tokens: bigint | null
+              cache_read: bigint | null
+              cache_creation: bigint | null
+            }>
+          >`
+            SELECT date_trunc('day', r."capturedAt") AS day,
+                   COUNT(*)                          AS commits,
+                   SUM(r."inputTokens")              AS input_tokens,
+                   SUM(r."outputTokens")             AS output_tokens,
+                   SUM(r."cacheReadTokens")          AS cache_read,
+                   SUM(r."cacheCreationTokens")      AS cache_creation
+            FROM "CommitRecord" r
+            WHERE ${sqlFilter}
+            GROUP BY 1
+            ORDER BY 1 ASC
+            LIMIT 180
+          `,
+          prisma.$queryRaw<Array<{ day: Date; kind: ResourceKind | null; count: bigint }>>`
+            SELECT date_trunc('day', r."capturedAt") AS day,
+                   i.kind                            AS kind,
+                   COUNT(*)                          AS count
+            FROM "ToolInvocation" i
+            JOIN "CommitRecord" r ON r.id = i."recordId"
+            WHERE i."rowType" = 'ITEM' AND ${sqlFilter}
+            GROUP BY 1, 2
+            ORDER BY 1 ASC
+          `,
+          prisma.$queryRaw<Array<{ project: string; kind: ResourceKind | null; count: bigint }>>`
+            SELECT p.name  AS project,
+                   i.kind  AS kind,
+                   COUNT(*) AS count
+            FROM "ToolInvocation" i
+            JOIN "CommitRecord" r ON r.id = i."recordId"
+            JOIN "Project" p      ON p.id = r."projectId"
+            WHERE i."rowType" = 'ITEM' AND ${sqlFilter}
+            GROUP BY 1, 2
+          `,
+        ])
+
+      const sum = totals._sum
+      res.json({
+        success: true,
+        data: {
+          summary: {
+            commits,
+            sessions: sessions.length,
+            invocations,
+            inputTokens: sum.inputTokens ?? 0,
+            outputTokens: sum.outputTokens ?? 0,
+            cacheReadTokens: sum.cacheReadTokens ?? 0,
+            cacheCreationTokens: sum.cacheCreationTokens ?? 0,
+            estimatedCostUsd: sum.estimatedCostUsd ? Number(sum.estimatedCostUsd) : 0,
+          },
+          kinds: kinds.map((k) => ({ kind: k.kind, count: k._count._all })),
+          topResources: topResources.map((r) => ({
+            plugin: r.plugin,
+            resource: r.resource,
+            count: r._count._all,
+          })),
+          // bigint 는 JSON.stringify 가 던지므로 Number 로 내린다(토큰 수는 안전 범위).
+          dailyTokens: dailyTokens.map((r) => ({
+            day: r.day,
+            commits: Number(r.commits),
+            inputTokens: Number(r.input_tokens ?? 0),
+            outputTokens: Number(r.output_tokens ?? 0),
+            cacheRead: Number(r.cache_read ?? 0),
+            cacheCreation: Number(r.cache_creation ?? 0),
+          })),
+          dailyKinds: dailyKinds.map((r) => ({
+            day: r.day,
+            kind: r.kind,
+            count: Number(r.count),
+          })),
+          projectKinds: projectKinds.map((r) => ({
+            project: r.project,
+            kind: r.kind,
+            count: Number(r.count),
+          })),
+        },
       })
     } catch (err) {
       res.status(500).json({ success: false, error: String(err) })

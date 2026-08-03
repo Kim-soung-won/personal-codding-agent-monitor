@@ -3,6 +3,7 @@ import * as api from '@/entities/commit-record/api/agentFactoryApi'
 import type {
   RecordFilter,
   InvocationFilter,
+  OverviewFilter,
 } from '@/entities/commit-record/model/agentFactory'
 
 /**
@@ -34,6 +35,11 @@ export const commitRecordQueries = {
     queryOptions({ queryKey: [...KEY, 'stats', 'feedback'], queryFn: api.getFeedbackStats }),
   dailyTokens: () =>
     queryOptions({ queryKey: [...KEY, 'stats', 'tokens-daily'], queryFn: api.getDailyTokens }),
+  overview: (filter: OverviewFilter) =>
+    queryOptions({
+      queryKey: [...KEY, 'stats', 'overview', filter],
+      queryFn: () => api.getOverview(filter),
+    }),
   meta: () => queryOptions({ queryKey: [...KEY, 'meta'], queryFn: api.getMeta }),
   invocations: (filter: InvocationFilter) =>
     queryOptions({

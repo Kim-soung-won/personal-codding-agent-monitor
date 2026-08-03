@@ -40,7 +40,7 @@ export default function App() {
         {/* 레거시 뷰(Phase 2b-2에서 대시보드로 대체 예정, 현재 URL로 접근 가능) */}
         <Route path="/projects" element={<ProjectsListPage sessions={sessions} />} />
         <Route path="/compare" element={<ComparePage sessions={sessions} />} />
-        <Route path="/analytics" element={<AnalyticsPage sessions={sessions} />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/s/:sessionId" element={<Navigate to="chat" replace />} />
         <Route path="/s/:sessionId/:tab" element={<SessionPage sessions={sessions} onConnectedChange={() => {}} />} />
         <Route path="/p/:projectEncoded" element={<Navigate to="resources" replace />} />

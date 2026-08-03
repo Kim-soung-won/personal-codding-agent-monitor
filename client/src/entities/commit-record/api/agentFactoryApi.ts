@@ -16,6 +16,8 @@ import type {
   FeedbackStatRow,
   InvocationFilter,
   InvocationHistoryRow,
+  OverviewFilter,
+  OverviewStats,
   PluginStatRow,
   SkillStatRow,
   ProjectRef,
@@ -84,6 +86,50 @@ export async function getInvocations(f: InvocationFilter = {}): Promise<Invocati
     return unwrap(res, rowArray, []) as unknown as InvocationHistoryRow[]
   } catch {
     return []
+  }
+}
+
+const EMPTY_OVERVIEW: OverviewStats = {
+  summary: {
+    commits: 0,
+    sessions: 0,
+    invocations: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    estimatedCostUsd: 0,
+  },
+  kinds: [],
+  topResources: [],
+  dailyTokens: [],
+  dailyKinds: [],
+  projectKinds: [],
+}
+
+const overviewSchema = z.object({
+  summary: z.record(z.string(), z.unknown()),
+  kinds: z.array(z.unknown()),
+  topResources: z.array(z.unknown()),
+  dailyTokens: z.array(z.unknown()),
+  dailyKinds: z.array(z.unknown()),
+  projectKinds: z.array(z.unknown()),
+})
+
+/** 분석 대시보드 집계 — 화면 하나가 쓰는 모든 축을 같은 필터로 한 번에 받는다. */
+export async function getOverview(f: OverviewFilter = {}): Promise<OverviewStats> {
+  try {
+    const res = await http.get('/api/agent-factory/stats/overview', {
+      params: {
+        from: f.from,
+        to: f.to,
+        projectId: f.projectId ?? undefined,
+        userId: f.userId ?? undefined,
+      },
+    })
+    return unwrap(res, overviewSchema, EMPTY_OVERVIEW) as unknown as OverviewStats
+  } catch {
+    return EMPTY_OVERVIEW
   }
 }
 

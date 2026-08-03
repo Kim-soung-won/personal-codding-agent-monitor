@@ -1,31 +1,51 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BarChart, DateLineChart, DoughnutChart } from '@/shared/ui/charts'
 import type { BarChartView, CategoryDoughnutChartView, DateLineChartView } from '@/shared/ui/charts'
 import { useTheme } from '@/shared/lib/useTheme'
-import { extractInvocations, groupByPlugin } from '@shared/resource-extract'
-import { sessionQueries } from '@/entities/session'
-import { KIND_HEX as KIND_COLORS } from '@/shared/lib/resourceKind'
-import { calcCostUsd, collectUsage } from '@shared/pricing'
-import type { SessionInfo } from '@/entities/session'
+import { cn } from '@/shared/lib/utils'
+import { TOKEN_SERIES, compactTokens } from '@/shared/lib/tokenSeries'
+import {
+  INVOCATION_KIND_ORDER,
+  INVOCATION_KIND_STYLE,
+  kindKey,
+  type InvocationKindKey,
+} from '@/shared/lib/invocationKind'
+import { ChartCard } from '@/shared/ui/ChartCard'
+import { commitRecordQueries } from '@/entities/commit-record'
 
-/** 종류별 시리즈 정의. 이름·색이 여기 한 곳에서 나오므로 차트끼리 색이 어긋나지 않는다. */
-const KIND_SERIES_DEFS = [
-  { name: 'Skill',    kind: 'skill'    as const, color: KIND_COLORS.skill },
-  { name: 'Agent',    kind: 'agent'    as const, color: KIND_COLORS.agent },
-  { name: 'Workflow', kind: 'workflow' as const, color: KIND_COLORS.workflow },
-  { name: 'Artifact', kind: 'artifact' as const, color: KIND_COLORS.artifact },
-  { name: 'MCP',      kind: 'mcp'      as const, color: KIND_COLORS.mcp },
+/**
+ * 조회 기간 프리셋. 0 은 제한 없음(전체).
+ * 커밋 기록의 시각축은 커밋의 capturedAt 이다 — 호출 한 건에는 자체 시각이 없다.
+ */
+const RANGE_OPTIONS = [
+  { days: 7, label: '최근 7일' },
+  { days: 30, label: '최근 30일' },
+  { days: 0, label: '전체' },
 ]
 
-function projectLabel(path: string): string {
-  const parts = path.split('/').filter(Boolean)
-  return parts[parts.length - 1] ?? path
+/** YYYY-MM-DD(로컬). 서버의 from/to 는 날짜 단위로 받는다. */
+function toDateInput(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function rangeParams(days: number): { from?: string; to?: string } {
+  if (days <= 0) return {}
+  const to = new Date()
+  const from = new Date()
+  from.setDate(from.getDate() - (days - 1))
+  return { from: toDateInput(from), to: toDateInput(to) }
 }
 
 function formatCost(usd: number): string {
+  if (usd <= 0) return '—'
   if (usd < 0.005) return '<$0.01'
   return `$${usd.toFixed(2)}`
+}
+
+function resourceLabel(row: { plugin: string | null; resource: string }): string {
+  return row.plugin ? `${row.plugin}:${row.resource}` : row.resource
 }
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -38,268 +58,257 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
   )
 }
 
-interface Props {
-  sessions: SessionInfo[]
+/** 차트 헤더 우측의 보조 수치·단서. ChartCard 의 actions 슬롯에 넣는다. */
+function ChartNote({ children }: { children: ReactNode }) {
+  return <span className="text-[11px] text-muted-foreground tabular-nums">{children}</span>
 }
 
-export function GlobalAnalytics({ sessions }: Props) {
+/**
+ * 커밋 기록(DB) 기반 분석 대시보드.
+ *
+ * 데이터는 `/stats/overview` 한 번의 응답에서 전부 나온다 — 축마다 따로 부르면
+ * 필터가 바뀌는 순간 화면 안에서 구간이 어긋난다.
+ */
+export function GlobalAnalytics() {
   const { dark } = useTheme()
   const chartTheme = dark ? 'dark' : 'light'
+  const [rangeDays, setRangeDays] = useState(7)
 
-  const sessionIds = sessions.map(s => s.sessionId)
-  const { data: allEvents = [], isPending } = useQuery(sessionQueries.manyEvents(sessionIds))
-  const loading = sessionIds.length > 0 && isPending
+  const filter = useMemo(() => rangeParams(rangeDays), [rangeDays])
+  const { data, isPending } = useQuery(commitRecordQueries.overview(filter))
+
+  const kindColor = (key: InvocationKindKey) =>
+    dark ? INVOCATION_KIND_STYLE[key].dark : INVOCATION_KIND_STYLE[key].light
 
   const derived = useMemo(() => {
-    const invocations = extractInvocations(allEvents)
+    const summary = data?.summary
+    const kinds = data?.kinds ?? []
+    const topResources = data?.topResources ?? []
+    const dailyTokens = data?.dailyTokens ?? []
+    const dailyKinds = data?.dailyKinds ?? []
+    const projectKinds = data?.projectKinds ?? []
 
-    // Kind counts
-    const skillCount    = invocations.filter(i => i.kind === 'skill').length
-    const agentCount    = invocations.filter(i => i.kind === 'agent').length
-    const workflowCount = invocations.filter(i => i.kind === 'workflow').length
-    const artifactCount = invocations.filter(i => i.kind === 'artifact').length
-    const mcpCount      = invocations.filter(i => i.kind === 'mcp').length
-    const totalCalls    = skillCount + agentCount + workflowCount + artifactCount + mcpCount
+    // 종류 축은 항상 고정 순서로 본다 — 건수 순으로 정렬하면 필터를 바꿀 때마다
+    // 색이 자리를 바꿔 같은 종류가 다른 색으로 보인다.
+    const kindCount = new Map<InvocationKindKey, number>()
+    for (const row of kinds) kindCount.set(kindKey(row.kind), row.count)
 
-    // Top resources (key = plugin:resource if plugin exists, else resource)
-    const freqMap = new Map<string, { count: number; kind: string }>()
-    for (const inv of invocations) {
-      const key = inv.plugin != null && inv.plugin.length > 0
-        ? `${inv.plugin}:${inv.resource}`
-        : inv.resource
-      const existing = freqMap.get(key)
-      if (existing) {
-        existing.count++
-      } else {
-        freqMap.set(key, { count: 1, kind: inv.kind })
-      }
-    }
-    const sorted = [...freqMap.entries()].sort((a, b) => b[1].count - a[1].count)
-    const top10 = sorted.slice(0, 10)
-
-    // Cost estimation — 요청 단위 중복 제거 후 모델별 단가 적용
-    const usageEntries = collectUsage(allEvents)
-    const costUsd = usageEntries.reduce((sum, u) => sum + calcCostUsd(u.usage, u.model), 0)
-
-    const observedModels = [
-      ...new Set(usageEntries.map(u => u.model).filter((m): m is string => Boolean(m))),
-    ].sort()
-
-    // Calls by day (YYYY-MM-DD)
-    const skillByDay    = new Map<string, number>()
-    const agentByDay    = new Map<string, number>()
-    const workflowByDay = new Map<string, number>()
-    const artifactByDay = new Map<string, number>()
-    const mcpByDay      = new Map<string, number>()
-
-    for (const inv of invocations) {
-      const day = inv.timestamp.slice(0, 10)
-      const map = inv.kind === 'skill' ? skillByDay
-        : inv.kind === 'agent' ? agentByDay
-        : inv.kind === 'workflow' ? workflowByDay
-        : inv.kind === 'artifact' ? artifactByDay
-        : mcpByDay
-      map.set(day, (map.get(day) ?? 0) + 1)
-    }
-    const allDays = [
-      ...new Set([
-        ...skillByDay.keys(), ...agentByDay.keys(), ...workflowByDay.keys(),
-        ...artifactByDay.keys(), ...mcpByDay.keys(),
-      ]),
-    ].sort()
-
-    // Calls by project (using sessionId → session → projectEncoded)
-    const sessionProjectMap = new Map<string, string>()
-    for (const s of sessions) {
-      sessionProjectMap.set(s.sessionId, s.projectPath)
+    const days = [...new Set(dailyKinds.map((r) => String(r.day).slice(0, 10)))].sort()
+    const kindByDay = new Map<string, number>()
+    for (const row of dailyKinds) {
+      kindByDay.set(`${String(row.day).slice(0, 10)}|${kindKey(row.kind)}`, row.count)
     }
 
-    const projectCountMap = new Map<string, { skill: number; agent: number; workflow: number; artifact: number; mcp: number }>()
-    for (const inv of invocations) {
-      const projPath = sessionProjectMap.get(inv.sessionId) ?? 'Unknown'
-      const label    = projectLabel(projPath)
-      const existing = projectCountMap.get(label)
-      if (existing) {
-        existing[inv.kind]++
-      } else {
-        projectCountMap.set(label, { skill: 0, agent: 0, workflow: 0, artifact: 0, mcp: 0, [inv.kind]: 1 })
-      }
+    const tokenDays = dailyTokens.map((r) => String(r.day).slice(0, 10))
+
+    // 프로젝트별 — 총 호출 상위 8개만. 나머지는 막대가 뭉개져 읽히지 않는다.
+    const projectTotals = new Map<string, number>()
+    const projectByKind = new Map<string, number>()
+    for (const row of projectKinds) {
+      projectTotals.set(row.project, (projectTotals.get(row.project) ?? 0) + row.count)
+      projectByKind.set(`${row.project}|${kindKey(row.kind)}`, row.count)
     }
-    // Top 8 projects by total
-    const projectEntries = [...projectCountMap.entries()]
-      .map(([name, c]) => ({ name, total: c.skill + c.agent + c.workflow + c.artifact + c.mcp, ...c }))
-      .sort((a, b) => b.total - a.total)
+    const topProjects = [...projectTotals.entries()]
+      .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
+      .map(([name]) => name)
 
-    // Plugin-level aggregation (standalone excluded from top list)
-    const pluginGroups = groupByPlugin(invocations)
-    const topPluginGroups = pluginGroups
-      .filter(g => g.plugin !== '(standalone)')
-      .slice(0, 8)
+    const totalTokens = summary
+      ? summary.inputTokens + summary.outputTokens + summary.cacheReadTokens + summary.cacheCreationTokens
+      : 0
 
     return {
-      skillCount, agentCount, workflowCount, artifactCount, mcpCount, totalCalls, costUsd,
-      observedModels,
-      top10, allDays,
-      byDay: {
-        skill: skillByDay, agent: agentByDay, workflow: workflowByDay,
-        artifact: artifactByDay, mcp: mcpByDay,
-      },
-      projectEntries, topResource: sorted[0]?.[0] ?? '—',
-      topPluginGroups,
+      summary,
+      topResources,
+      dailyTokens,
+      kindCount,
+      days,
+      kindByDay,
+      tokenDays,
+      topProjects,
+      projectByKind,
+      totalTokens,
+      totalInvocations: summary?.invocations ?? 0,
     }
-  }, [allEvents, sessions])
+  }, [data])
 
-  // ── Chart data shapes ──────────────────────────────────────────────────────
+  // ── 차트 데이터 ────────────────────────────────────────────────────────────
 
-  // 도넛 — 0건인 종류는 뺀다. 색은 종류에 붙어 있으므로 남은 조각과 함께 뽑아야
-  // 한 종류가 빠졌을 때 나머지 색이 한 칸씩 밀리지 않는다.
-  const doughnutSlices = KIND_SERIES_DEFS
-    .map(def => ({ ...def, value: derived[`${def.kind}Count`] }))
-    .filter(d => d.value > 0)
+  // 0건인 종류는 빼되 색은 종류에 붙여 뽑는다 — 걸러진 뒤 색을 순서대로 매기면 밀린다.
+  const kindSlices = INVOCATION_KIND_ORDER.map((key) => ({
+    key,
+    name: INVOCATION_KIND_STYLE[key].label,
+    value: derived.kindCount.get(key) ?? 0,
+  })).filter((s) => s.value > 0)
 
-  const doughnutData: CategoryDoughnutChartView = doughnutSlices.map(
-    ({ name, value }) => ({ name, value }),
-  )
-  const doughnutColors = doughnutSlices.map(d => d.color)
+  const doughnutData: CategoryDoughnutChartView = kindSlices.map(({ name, value }) => ({ name, value }))
+  const doughnutColors = kindSlices.map((s) => kindColor(s.key))
 
   const topBarData: BarChartView = {
-    categories: derived.top10.map(([name]) => name),
-    series: [
-      { name: '호출 횟수', data: derived.top10.map(([, { count }]) => count) },
-    ],
+    categories: derived.topResources.map(resourceLabel),
+    series: [{ name: '호출 횟수', data: derived.topResources.map((r) => r.count) }],
   }
 
-  const activeDaySeries = KIND_SERIES_DEFS
-    .map(def => ({
-      ...def,
-      dataPoints: derived.allDays.map(d => ({
-        timestamp: d,
-        requests: derived.byDay[def.kind].get(d) ?? 0,
+  const activeDayKinds = INVOCATION_KIND_ORDER.map((key) => ({
+    key,
+    name: INVOCATION_KIND_STYLE[key].label,
+    dataPoints: derived.days.map((d) => ({
+      timestamp: d,
+      requests: derived.kindByDay.get(`${d}|${key}`) ?? 0,
+    })),
+  })).filter((s) => s.dataPoints.some((p) => p.requests > 0))
+
+  const callLineData: DateLineChartView = {
+    timestamps: derived.days,
+    series: activeDayKinds.map(({ name, dataPoints }) => ({ name, dataPoints })),
+  }
+  const callLineColors = activeDayKinds.map((s) => kindColor(s.key))
+
+  const tokenLineData: DateLineChartView = {
+    timestamps: derived.tokenDays,
+    series: TOKEN_SERIES.map((s) => ({
+      name: s.label,
+      dataPoints: derived.dailyTokens.map((r) => ({
+        timestamp: String(r.day).slice(0, 10),
+        requests: r[s.key],
       })),
-    }))
-    .filter(s => s.dataPoints.some(p => p.requests > 0))
-  const datelineData: DateLineChartView = {
-    timestamps: derived.allDays,
-    series: activeDaySeries.map(({ name, dataPoints }) => ({ name, dataPoints })),
+    })),
   }
-  const datelineColors = activeDaySeries.map(s => s.color)
+  const tokenLineColors = TOKEN_SERIES.map((s) => (dark ? s.dark : s.light))
 
-  const activePluginSeries = KIND_SERIES_DEFS
-    .map(def => ({ ...def, data: derived.topPluginGroups.map(g => g.kindCounts[def.kind]) }))
-    .filter(s => s.data.some(v => v > 0))
-  const pluginBarData: BarChartView = {
-    categories: derived.topPluginGroups.map(g => g.plugin),
-    series: activePluginSeries.map(({ name, data }) => ({ name, data })),
-  }
-  const pluginBarColors = activePluginSeries.map(s => s.color)
+  const activeProjectKinds = INVOCATION_KIND_ORDER.map((key) => ({
+    key,
+    name: INVOCATION_KIND_STYLE[key].label,
+    data: derived.topProjects.map((p) => derived.projectByKind.get(`${p}|${key}`) ?? 0),
+  })).filter((s) => s.data.some((v) => v > 0))
 
-  const activeProjectSeries = KIND_SERIES_DEFS
-    .map(def => ({ ...def, data: derived.projectEntries.map(p => p[def.kind]) }))
-    .filter(s => s.data.some(v => v > 0))
   const projectBarData: BarChartView = {
-    categories: derived.projectEntries.map(p => p.name),
-    series: activeProjectSeries.map(({ name, data }) => ({ name, data })),
+    categories: derived.topProjects,
+    series: activeProjectKinds.map(({ name, data }) => ({ name, data })),
   }
-  const projectBarColors = activeProjectSeries.map(s => s.color)
+  const projectBarColors = activeProjectKinds.map((s) => kindColor(s.key))
 
-  const isEmpty = derived.totalCalls === 0 && !loading
+  const summary = derived.summary
+  const isEmpty = !isPending && (summary?.commits ?? 0) === 0
 
   return (
     <div className="space-y-6">
+      {/* 조회 기간 — 아래 카드·차트 전부가 이 구간을 본다 */}
+      <div className="flex items-center gap-1.5">
+        {RANGE_OPTIONS.map((opt) => (
+          <button
+            key={opt.days}
+            onClick={() => setRangeDays(opt.days)}
+            className={cn(
+              'text-xs px-2.5 py-1 rounded-md border transition-colors',
+              rangeDays === opt.days
+                ? 'border-primary text-primary bg-primary/10'
+                : 'border-border text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
 
-      {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
-          label="전체 세션"
-          value={sessions.length.toString()}
-          sub={`${allEvents.length.toLocaleString()}개 이벤트`}
+          label="커밋 기록"
+          value={(summary?.commits ?? 0).toLocaleString()}
+          sub={`${(summary?.sessions ?? 0).toLocaleString()}개 세션`}
         />
         <StatCard
-          label="총 Resource 호출"
-          value={derived.totalCalls.toString()}
-          sub={[
-            `Skill ${derived.skillCount}`,
-            `Agent ${derived.agentCount}`,
-            derived.workflowCount > 0 ? `Workflow ${derived.workflowCount}` : null,
-            derived.artifactCount > 0 ? `Artifact ${derived.artifactCount}` : null,
-            derived.mcpCount > 0 ? `MCP ${derived.mcpCount}` : null,
-          ].filter(Boolean).join(' · ')}
+          label="총 호출"
+          value={derived.totalInvocations.toLocaleString()}
+          sub={INVOCATION_KIND_ORDER.filter((k) => (derived.kindCount.get(k) ?? 0) > 0)
+            .map((k) => `${INVOCATION_KIND_STYLE[k].label} ${derived.kindCount.get(k)}`)
+            .join(' · ')}
         />
         <StatCard
-          label="최다 호출 Resource"
-          value={derived.topResource}
-          sub={derived.top10[0] ? `${derived.top10[0][1].count}회` : undefined}
+          label="토큰 합계"
+          value={compactTokens(derived.totalTokens)}
+          sub={`캐시 읽기 ${compactTokens(summary?.cacheReadTokens ?? 0)} 포함`}
         />
         <StatCard
           label="추산 비용"
-          value={derived.costUsd > 0 ? formatCost(derived.costUsd) : '—'}
+          value={formatCost(summary?.estimatedCostUsd ?? 0)}
           sub={
-            derived.observedModels.length > 0
-              ? `${derived.observedModels.length}개 모델 단가 적용`
-              : undefined
+            (summary?.estimatedCostUsd ?? 0) > 0
+              ? '커밋 기록에 적재된 값 합계'
+              : '기록에 단가 산출값이 없음'
           }
         />
       </div>
 
-      {loading && (
-        <p className="text-sm text-muted-foreground animate-pulse text-center py-4">
-          {sessions.length}개 세션 데이터 로딩 중…
-        </p>
+      {isPending && (
+        <p className="text-sm text-muted-foreground animate-pulse text-center py-4">집계 불러오는 중…</p>
       )}
 
       {isEmpty && (
         <p className="text-sm text-muted-foreground text-center py-8">
-          Resource 호출 데이터 없음
+          이 기간에 적재된 커밋 기록이 없습니다
         </p>
       )}
 
-      {!isEmpty && (
+      {!isEmpty && !isPending && (
         <>
-          {/* Row 1: Doughnut + Top Resources bar */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-sm font-medium mb-3">종류별 분포</p>
+            <ChartCard title="종류별 분포">
               <DoughnutChart
                 data={doughnutData}
                 height="260px"
                 colors={doughnutColors}
                 theme={chartTheme}
               />
-            </div>
+            </ChartCard>
 
-            <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-sm font-medium mb-3">Top 10 Resources</p>
+            <ChartCard title="Top 10 리소스">
               <BarChart
                 data={topBarData}
                 height="260px"
-                colors={['#6366f1']}
+                colors={['#2a78d6']}
                 theme={chartTheme}
                 unit="회"
                 labelRotate={30}
               />
-            </div>
+            </ChartCard>
           </div>
 
-          {/* Row 2: Calls over time */}
-          {derived.allDays.length > 1 && (
-            <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-sm font-medium mb-3">일별 호출 추이</p>
+          <ChartCard
+            title="토큰 사용량 추이"
+            actions={
+              <ChartNote>
+                {`합계 ${compactTokens(derived.totalTokens)} · ${TOKEN_SERIES.map(
+                  (s) => `${s.label} ${compactTokens(tokenTotal(derived.dailyTokens, s.key))}`,
+                ).join(' · ')}`}
+              </ChartNote>
+            }
+          >
+            <DateLineChart
+              data={tokenLineData}
+              height="260px"
+              colors={tokenLineColors}
+              theme={chartTheme}
+              valueFormat={compactTokens}
+              labelRotate={derived.tokenDays.length > 10 ? 45 : 0}
+            />
+          </ChartCard>
+
+          {derived.days.length > 1 && (
+            <ChartCard title="일별 호출 추이" actions={<ChartNote>커밋 시각(capturedAt) 기준</ChartNote>}>
               <DateLineChart
-                data={datelineData}
+                data={callLineData}
                 height="260px"
-                colors={datelineColors}
+                colors={callLineColors}
                 theme={chartTheme}
                 unit="회"
-                labelRotate={derived.allDays.length > 10 ? 45 : 0}
+                labelRotate={derived.days.length > 10 ? 45 : 0}
               />
-            </div>
+            </ChartCard>
           )}
 
-          {/* Row 3: Per-project breakdown */}
-          {derived.projectEntries.length > 1 && (
-            <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-sm font-medium mb-3">프로젝트별 호출 현황</p>
+          {derived.topProjects.length > 1 && (
+            <ChartCard title="프로젝트별 호출 현황" actions={<ChartNote>상위 8개 프로젝트</ChartNote>}>
               <BarChart
                 data={projectBarData}
                 height="260px"
@@ -307,24 +316,18 @@ export function GlobalAnalytics({ sessions }: Props) {
                 theme={chartTheme}
                 unit="회"
               />
-            </div>
-          )}
-
-          {/* Row 4: Per-plugin breakdown */}
-          {derived.topPluginGroups.length > 0 && (
-            <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-sm font-medium mb-3">플러그인별 호출 현황</p>
-              <BarChart
-                data={pluginBarData}
-                height="260px"
-                colors={pluginBarColors}
-                theme={chartTheme}
-                unit="회"
-              />
-            </div>
+            </ChartCard>
           )}
         </>
       )}
     </div>
   )
+}
+
+/** 토큰 종류별 기간 합계. 카드 부제와 차트가 같은 수를 보게 한 곳에서 더한다. */
+function tokenTotal(
+  rows: Array<{ inputTokens: number; outputTokens: number; cacheRead: number; cacheCreation: number }>,
+  key: (typeof TOKEN_SERIES)[number]['key'],
+): number {
+  return rows.reduce((sum, r) => sum + r[key], 0)
 }
