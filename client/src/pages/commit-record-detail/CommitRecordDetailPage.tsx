@@ -55,7 +55,7 @@ export function CommitRecordDetailPage() {
       <PageShell title="커밋 기록">
         <p className="text-sm text-muted-foreground py-16 text-center">
           기록을 찾을 수 없습니다.{" "}
-          <Link to="/" className="text-primary underline">
+          <Link to="/records" className="text-primary underline">
             목록으로
           </Link>
         </p>
@@ -86,7 +86,7 @@ export function CommitRecordDetailPage() {
       }
     >
       <div className="mb-4">
-        <Link to="/" className="text-xs text-primary hover:underline">
+        <Link to="/records" className="text-xs text-primary hover:underline">
           ← 커밋 기록 목록
         </Link>
       </div>

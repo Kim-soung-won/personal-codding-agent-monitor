@@ -11,8 +11,11 @@ main.tsx → <AuthGate> <BrowserRouter> <App/> </BrowserRouter> </AuthGate>
 ## 라우팅 (`App.tsx`)
 
 ```
-/                          HomePage (WelcomeDashboard)
-/analytics                 AnalyticsPage → GlobalAnalytics(전체 리소스 집계)
+/                          AnalyticsPage → GlobalAnalytics(전체 집계) — 메인 화면
+/analytics                 → `/` 리다이렉트 (구 URL 호환)
+/records                   CommitRecordsPage (커밋 기록 목록)
+/records/:id               CommitRecordDetailPage
+/reference/pricing         HomePage (Pricing 참고)
 /s/:sessionId/:tab         SessionPage   (chat|thinking|tokens|resources)
 /p/:projectEncoded/:tab    ProjectPage   (프로젝트 내 세션 집계/개별)
 Sidebar: 프로젝트 목록(세션 dedup), 연결 상태 점

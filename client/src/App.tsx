@@ -26,8 +26,10 @@ export default function App() {
   return (
     <AppShell connected={connected}>
       <Routes>
+        {/* 분석 대시보드 — 메인(홈) 화면 */}
+        <Route path="/" element={<AnalyticsPage />} />
         {/* 커밋 단위 기록 — 이 제품의 본체 */}
-        <Route path="/" element={<CommitRecordsPage />} />
+        <Route path="/records" element={<CommitRecordsPage />} />
         <Route path="/records/:id" element={<CommitRecordDetailPage />} />
         <Route path="/subagents" element={<SubAgentsPage />} />
         <Route path="/subagents/:agent" element={<SubAgentDetailPage />} />
@@ -40,7 +42,8 @@ export default function App() {
         {/* 레거시 뷰(Phase 2b-2에서 대시보드로 대체 예정, 현재 URL로 접근 가능) */}
         <Route path="/projects" element={<ProjectsListPage sessions={sessions} />} />
         <Route path="/compare" element={<ComparePage sessions={sessions} />} />
-        <Route path="/analytics" element={<AnalyticsPage />} />
+        {/* 구 URL 호환 — 분석은 이제 루트다 */}
+        <Route path="/analytics" element={<Navigate to="/" replace />} />
         <Route path="/s/:sessionId" element={<Navigate to="chat" replace />} />
         <Route path="/s/:sessionId/:tab" element={<SessionPage sessions={sessions} onConnectedChange={() => {}} />} />
         <Route path="/p/:projectEncoded" element={<Navigate to="resources" replace />} />
