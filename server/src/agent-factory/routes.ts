@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { Prisma } from '@prisma/client'
 import type { PrismaClient, ResourceKind } from '@prisma/client'
-import { ingestRecord, type IncomingRecord, type IngestResult } from './record-service.js'
+import { findUnchanged, ingestRecord, type IncomingRecord, type IngestResult } from './record-service.js'
 
 /** 목록 페이지 크기 상한 — 훅이 실수로 큰 값을 보내도 DB 를 훑지 않게 막는다. */
 const MAX_PAGE_SIZE = 100
@@ -55,8 +55,12 @@ export function createAgentFactoryRouter(prisma: PrismaClient): Router {
       return
     }
 
+    // 내용이 그대로인 재전송은 쿼리 1회로 미리 골라낸다(훅 타임아웃 대응 — findUnchanged 참조).
+    // 조회가 실패해도 건별 적재로 물러서면 결과는 같으므로 막지 않는다.
+    const unchanged = await findUnchanged(prisma, records).catch(() => new Map<number, IngestResult>())
+
     const results: IngestResult[] = []
-    for (const incoming of records) {
+    for (const [index, incoming] of records.entries()) {
       if (!incoming?.markdown || !incoming?.projectPath) {
         results.push({
           outcome: 'skipped',
@@ -66,6 +70,11 @@ export function createAgentFactoryRouter(prisma: PrismaClient): Router {
           warnings: [],
           reason: 'markdown 과 projectPath 는 필수다',
         })
+        continue
+      }
+      const known = unchanged.get(index)
+      if (known) {
+        results.push(known)
         continue
       }
       try {
